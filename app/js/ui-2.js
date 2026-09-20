@@ -165,6 +165,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
           </div>
           <div class="form-row" style="align-self:flex-end;"><button class="btn btn-accent" id="runSimBtn">▶ Run Thermal Simulation</button></div>
         </div>
+        <div id="simValidationErrors" hidden></div>
       </div>
 
       ${result ? `
@@ -180,9 +181,16 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         <div id="tempChart"></div>
       </div>
 
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Hourly Heat Flow Breakdown <span class="tag tag-model">model prediction — first 24h</span></h3>
+        <p class="hint" style="margin-bottom:8px;">Gains stack upward, losses stack downward — hover for exact watts per component.</p>
+        <div id="hourlyHeatFlowDiv"></div>
+      </div>
+
       <div class="grid grid-2">
         <div class="card">
           <h3>Heat Flow Analysis (daily totals)</h3>
+          <p class="hint">Gains stack left of center, losses stack right — same scale on both sides.</p>
           <div id="heatFlowDiv"></div>
         </div>
         <div class="card">
@@ -222,13 +230,22 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       CH.lineChart(U.qs("#tempChart", root), [
         { name: "Indoor Temp", color: "#1f8a9e", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tIndoor })) },
         { name: "Ambient Temp", color: "#c93b3b", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tAmb })) }
-      ], { height: 260, yLabel: "°C", xLabel: "Hours from simulation start", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max } });
-      CH.heatFlowDiagram(U.qs("#heatFlowDiv", root), result.daily);
+      ], { height: 260, yLabel: "°C", xLabel: "Hours from simulation start", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max }, tempZones: true });
+      const stepsPerDay = Math.round(24 * 60 / s.simConfig.timeStepMinutes);
+      CH.hourlyHeatFlowChart(U.qs("#hourlyHeatFlowDiv", root), result.series.slice(0, stepsPerDay), { height: 280, yLabel: "W", xLabel: "Hour of day" });
+      CH.stackedHeatBalanceChart(U.qs("#heatFlowDiv", root), result.daily);
       CH.scoreGauge(U.qs("#simGauge", root), result.scores.thermalComfortScore);
       wireExplainButtons(root, result, s.design, season);
     }
 
     U.on("#runSimBtn", "click", () => {
+      const check = window.APP_VALIDATOR.validateDesign(STORE.get());
+      if (!check.valid) {
+        U.showValidationErrors(root, "#simValidationErrors", check.errors);
+        window.APP.toast("Fix the highlighted design values before running.");
+        return;
+      }
+      U.showValidationErrors(root, "#simValidationErrors", []);
       const timeStepMinutes = parseInt(U.qs("#simStep", root).value);
       const periodType = U.qs("#simPeriod", root).value;
       const days = periodType === "24H" ? 1 : periodType === "7D" ? 7 : 30;
@@ -268,6 +285,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         </div>
         <div id="weightTotal" class="hint"></div>
         <button class="btn btn-accent" id="runOptBtn" style="margin-top:10px;">▶ Run Design Optimization</button>
+        <div id="optValidationErrors" hidden></div>
       </div>
 
       ${opt ? `
@@ -305,6 +323,29 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
           <div class="recommend-item"><div class="k">Thermal performance score</div><div class="v">${opt.recommended.score.total.toFixed(0)}/100</div></div>
         </div>
         <p class="hint" style="margin-top:10px;">Estimated cost: ₹${opt.recommended.cost.toLocaleString("en-IN")} (materials-based estimate, model prediction — verify with local quotations).</p>
+        ${s.location ? `
+        <h3 style="margin-top:14px;">Regional Material Availability <span class="tag tag-demo">rule-based estimate</span></h3>
+        <div class="table-wrap"><table>
+          <tr><th>Material</th><th>Availability</th><th>Est. lead time</th><th>Transport multiplier</th></tr>
+          ${[
+            ["Wall", opt.recommended.design.wall.materialId],
+            ["Roof", opt.recommended.design.roof.materialId],
+            ["Wall insulation", opt.recommended.design.wall.insulationMaterialId],
+            ["Glazing", opt.recommended.params.glz],
+            ...(opt.recommended.params.mass > 0 ? [["Thermal mass", opt.recommended.design.thermalMass.materialId]] : [])
+          ].map(([role, matId]) => {
+            const av = DATA.materialAvailability(matId, s.location);
+            if (!av) return "";
+            return `<tr>
+              <td>${role} — ${matName(matId)}</td>
+              <td>${av.availableLocally ? '<span class="tag tag-input">Locally sourced</span>' : '<span class="tag tag-demo">Import required</span>'}</td>
+              <td class="num">${av.leadTimeDays} days</td>
+              <td class="num">${av.transportMultiplier}×</td>
+            </tr>`;
+          }).join("")}
+        </table></div>
+        <p class="hint" style="margin-top:6px;">Rule-based estimate from each material's sustainability tag and this site's elevation/remoteness — not a supplier directory. Verify with actual local vendors before procurement.</p>
+        ` : ""}
         <button class="btn btn-accent btn-sm" id="adoptRecommendedBtn" style="margin-top:6px;">Adopt as current shelter design</button>
       </div>
 
@@ -361,6 +402,13 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
     }
 
     U.on("#runOptBtn", "click", () => {
+      const check = window.APP_VALIDATOR.validateDesign(s);
+      if (!check.valid) {
+        U.showValidationErrors(root, "#optValidationErrors", check.errors);
+        window.APP.toast("Fix the highlighted design values before running.");
+        return;
+      }
+      U.showValidationErrors(root, "#optValidationErrors", []);
       const nw = normalizedWeights(w);
       s.weights = nw;
       const result = ENGINE.runOptimization(s.design, season, s.simConfig, nw);
@@ -435,7 +483,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       CH.lineChart(U.qs("#whatifChart", wrap), [
         { name: "Before", color: "#8b98a6", data: beforeRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) },
         { name: "After", color: "#1f8a9e", data: afterRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) }
-      ], { height: 240, yLabel: "°C", xLabel: "Hours", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max } });
+      ], { height: 240, yLabel: "°C", xLabel: "Hours", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max }, tempZones: true });
     }, root);
   };
 })();

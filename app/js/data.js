@@ -69,16 +69,89 @@ window.APP_DATA = (function () {
     { id: "glaze_lowe", category: "WINDOW", name: "Low-E Double Glazing", uValue: 1.8, shgc: 0.62, costPerM2: 4200, sustainability: "HIGH" }
   ];
 
-  // ---- Comfort profiles ------------------------------------------------
+  // ---- Comfort profile — human occupancy only -------------------------
+  // This prototype targets one occupancy type: human shelter occupants.
+  // Non-human use cases (storage, livestock, equipment) are out of scope.
   const COMFORT_PROFILES = [
-    { id: "human", label: "Human Occupancy", min: 18, max: 27 },
-    { id: "agri_produce", label: "Agricultural Produce Storage", min: 4, max: 12 },
-    { id: "livestock", label: "Livestock Shelter", min: 8, max: 20 },
-    { id: "seed_storage", label: "Seed Storage", min: 5, max: 15 },
-    { id: "nursery", label: "Plant Nursery / Greenhouse", min: 15, max: 28 },
-    { id: "equipment", label: "Equipment / Electronics Shelter", min: 5, max: 35 },
-    { id: "custom", label: "Custom", min: 18, max: 27 }
+    { id: "human", label: "Human Occupancy", min: 18, max: 27 }
   ];
+
+  // Clothing insulation (clo) and activity (met) presets, ASHRAE-55-style.
+  // minShiftC is a documented heuristic (~3-4°C per clo / met step,
+  // standard building-comfort literature), applied only to the LOWER
+  // comfort bound — the lever that matters for a cold-region passive
+  // shelter. This is a modelling assumption, not a measured PMV/PPD
+  // result, and is disclosed as such wherever it's shown in the UI.
+  const CLOTHING_LEVELS = [
+    { id: "LIGHT", label: "Light indoor clothing", clo: 0.5, minShiftC: 3 },
+    { id: "TYPICAL", label: "Typical indoor clothing", clo: 1.0, minShiftC: 0 },
+    { id: "WINTER", label: "Heavy winter clothing", clo: 1.5, minShiftC: -3 },
+    { id: "ARCTIC", label: "Expedition / arctic clothing", clo: 2.2, minShiftC: -6 }
+  ];
+  const ACTIVITY_LEVELS = [
+    { id: "RESTING", label: "Resting / sleeping", met: 0.8, minShiftC: 1 },
+    { id: "SEATED", label: "Seated / light desk work", met: 1.0, minShiftC: 0 },
+    { id: "ACTIVE", label: "Light physical activity", met: 1.4, minShiftC: -2 }
+  ];
+  // ASHRAE-55 commonly cited acceptable indoor RH band — informational only.
+  const HUMIDITY_COMFORT_BAND = { min: 30, max: 70 };
+
+  // Per-person metabolic heat output by activity, representative figures
+  // from the ASHRAE Fundamentals Handbook Ch.9 ("Heat and Moisture Given
+  // Off by Human Beings") / ISO 8996 metabolic-rate tables — feeds the
+  // thermal engine's internal-gain term as occupancy x wattage, replacing
+  // a flat manual number.
+  const OCCUPANCY_ACTIVITY_LEVELS = [
+    { id: "SLEEPING", label: "Sleeping", watts: 85 },
+    { id: "RESTING", label: "Resting / seated", watts: 120 },
+    { id: "LIGHT", label: "Light activity (walking, tasks)", watts: 180 },
+    { id: "MODERATE", label: "Moderate (light work)", watts: 240 },
+    { id: "HEAVY", label: "Heavy (exercise / manual labor)", watts: 360 }
+  ];
+  function occupancyActivityById(id) { return OCCUPANCY_ACTIVITY_LEVELS.find(a => a.id === id) || OCCUPANCY_ACTIVITY_LEVELS[1]; }
+
+  // Regional material availability — a rule-based estimate, not a
+  // supplier directory. Derived from a material's existing sustainability
+  // tag (HIGH = naturally locally-sourced, LOW = manufactured/imported)
+  // and a location's elevation (a proxy for how remote/hard-to-truck-into
+  // it is). No specific supplier names are invented — there's no real
+  // data behind those, and fabricating some would be worse than omitting
+  // this feature entirely.
+  function materialAvailability(materialId, location) {
+    const m = materialById(materialId);
+    if (!m || !location) return null;
+    const elevationM = location.elevationM || 0;
+    const remoteness = Math.min(1, elevationM / 4000); // 0 (sea level) .. 1 (≈4000m+)
+    let baseLeadDays, availableLocally;
+    if (m.sustainability === "HIGH") { baseLeadDays = 3; availableLocally = true; }
+    else if (m.sustainability === "MEDIUM") { baseLeadDays = 10; availableLocally = remoteness < 0.5; }
+    else { baseLeadDays = 21; availableLocally = false; }
+    const leadTimeDays = Math.round(baseLeadDays * (1 + remoteness * 1.5));
+    const transportMultiplier = Math.round((1 + remoteness * 0.6) * 100) / 100;
+    return {
+      availableLocally,
+      leadTimeDays,
+      transportMultiplier,
+      note: availableLocally
+        ? "Naturally locally-sourced material — regional availability expected."
+        : `Manufactured/imported material — estimated ${leadTimeDays}-day lead time and ${transportMultiplier}× transport cost multiplier for this site's remoteness.`
+    };
+  }
+  function occupancyHeatWatts(occupancy, activityId) {
+    return Math.round((occupancy || 0) * occupancyActivityById(activityId).watts);
+  }
+
+  function clothingLevelById(id) { return CLOTHING_LEVELS.find(c => c.id === id) || CLOTHING_LEVELS[1]; }
+  function activityLevelById(id) { return ACTIVITY_LEVELS.find(a => a.id === id) || ACTIVITY_LEVELS[1]; }
+
+  // Effective lower comfort bound = user's base min, shifted by how
+  // insulated/active the occupants are. Feeds directly into the thermal
+  // engine's comfort.min (engine.js is unmodified — it just reads whatever
+  // comfort.min/max it's given).
+  function effectiveComfortMin(baseMin, clothingId, activityId, max) {
+    const shifted = baseMin + clothingLevelById(clothingId).minShiftC + activityLevelById(activityId).minShiftC;
+    return Math.min(shifted, max - 1);
+  }
 
   function materialsByCategory(cat) {
     return MATERIALS.filter(m => m.category === cat);
@@ -91,8 +164,25 @@ window.APP_DATA = (function () {
     return PREDEFINED_LOCATIONS.find(l => l.id === id);
   }
 
+  // Simple planar degree-distance (fine at this scale/precision — not a
+  // geodesic calc). Returns the nearest reference location within
+  // `maxDeg` degrees (~0.3° ≈ 30km at Indian latitudes), or null.
+  function nearestPredefinedLocation(lat, lon, maxDeg) {
+    maxDeg = maxDeg == null ? 0.3 : maxDeg;
+    let best = null, bestD = Infinity;
+    PREDEFINED_LOCATIONS.forEach(l => {
+      const d = Math.hypot(l.latitude - lat, l.longitude - lon);
+      if (d < bestD) { bestD = d; best = l; }
+    });
+    return bestD <= maxDeg ? best : null;
+  }
+
   return {
     PREDEFINED_LOCATIONS, MATERIALS, COMFORT_PROFILES,
-    materialsByCategory, materialById, predefinedLocationById
+    CLOTHING_LEVELS, ACTIVITY_LEVELS, HUMIDITY_COMFORT_BAND,
+    OCCUPANCY_ACTIVITY_LEVELS,
+    materialsByCategory, materialById, predefinedLocationById, nearestPredefinedLocation,
+    clothingLevelById, activityLevelById, effectiveComfortMin,
+    occupancyActivityById, occupancyHeatWatts, materialAvailability
   };
 })();

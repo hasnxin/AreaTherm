@@ -33,5 +33,13 @@ window.APP_CONFIG = {
     temp: "°C", energy: "kWh", power: "W", area: "m²", volume: "m³",
     length: "m", thickness: "mm", irradiance: "W/m²", solarAnnual: "kWh/m²/yr",
     wind: "m/s", cost: "₹"
+  },
+  // Display-only labels for the Imperial toggle. Area/volume/irradiance/
+  // solarAnnual/cost aren't converted — the engine and every other screen
+  // stay metric (see the Units section note in Settings).
+  UNITS_IMPERIAL: {
+    temp: "°F", energy: "kWh", power: "Btu/h", area: "m²", volume: "m³",
+    length: "ft", thickness: "mm", irradiance: "W/m²", solarAnnual: "kWh/m²/yr",
+    wind: "mph", cost: "₹"
   }
 };

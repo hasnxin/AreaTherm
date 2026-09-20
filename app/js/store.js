@@ -20,15 +20,23 @@ window.APP_STORE = (function () {
       airLeakageAch: 0.8,
       thermalMass: { materialId: "mass_stone", massKg: 800, surfaceAreaM2: 6 },
       occupancy: 2,
-      internalHeatGainW: 150,
+      occupancyActivity: "RESTING",
+      internalHeatGainW: DATA.occupancyHeatWatts(2, "RESTING"),
       groundTempC: null,
-      comfort: { profileId: "human", min: 18, max: 27 }
+      comfort: {
+        profileId: "human",
+        baseMin: 18, max: 27,
+        clothingLevel: "WINTER", activityLevel: "SEATED",
+        min: DATA.effectiveComfortMin(18, "WINTER", "SEATED", 27)
+      }
     };
   }
 
+  function genId(prefix) { return prefix + "_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7); }
+
   function freshState() {
     return {
-      project: { name: "Untitled Project", createdAt: new Date().toISOString() },
+      project: { id: genId("proj"), name: "Untitled Project", createdAt: new Date().toISOString() },
       locationKey: null,
       location: null,
       seasonKey: "Winter",
@@ -37,6 +45,8 @@ window.APP_STORE = (function () {
       simConfig: { timeStepMinutes: 60, periodType: "24H", days: 1 },
       weights: { ...window.APP_CONFIG.DEFAULT_WEIGHTS },
       mode: "SIMPLE",
+      theme: "light", // 'light' | 'dark' — see Settings
+      units: "METRIC", // 'METRIC' | 'IMPERIAL' — see Settings
       simulationHistory: [], // [{id, ts, locationLabel, designName, thermalComfortScore}]
       lastSimulationResult: null,
       lastOptimizationResult: null,
@@ -44,7 +54,10 @@ window.APP_STORE = (function () {
     };
   }
 
-  let state = load() || freshState();
+  // Merge onto freshState() defaults so a state saved before a new top-level
+  // field existed (e.g. theme/units) still gets a sane default instead of
+  // undefined, without touching any of that saved session's actual data.
+  let state = Object.assign(freshState(), load() || {});
 
   function load() {
     try {
@@ -52,27 +65,103 @@ window.APP_STORE = (function () {
       return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
   }
+  let storageWarned = false;
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    } catch (e) {
+      if (!storageWarned && window.APP && window.APP.toast) {
+        storageWarned = true;
+        window.APP.toast("Could not save project — browser storage is full or unavailable. Your changes may not persist.");
+      }
+    }
+    mirrorIntoProjectsList();
   }
 
   function get() { return state; }
   function reset() { state = freshState(); save(); return state; }
 
+  // ---- Multiple named projects ------------------------------------------
+  // A separate list of full-state snapshots, keyed by state.project.id.
+  // The "live" state above (areatherm_state_v1) is always whatever you're
+  // currently working on — this list is what lets you keep more than one
+  // named design and switch between them. Every save() call mirrors the
+  // live state into its matching list entry IF that project has already
+  // been explicitly saved to the list at least once (via saveAsProject) —
+  // a brand-new project doesn't appear in the list until you name it.
+  const PROJECTS_KEY = "areatherm_projects_v1";
+  function loadProjectsList() {
+    try {
+      const raw = localStorage.getItem(PROJECTS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function writeProjectsList(list) {
+    try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ }
+  }
+  function mirrorIntoProjectsList() {
+    if (!state.project || !state.project.id) return;
+    const list = loadProjectsList();
+    const idx = list.findIndex(p => p.id === state.project.id);
+    if (idx === -1) return; // not saved as a named project yet — nothing to mirror into
+    list[idx] = { id: state.project.id, name: state.project.name, updatedAt: new Date().toISOString(), snapshot: state };
+    writeProjectsList(list);
+  }
+  function listProjects() {
+    return loadProjectsList()
+      .map(p => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, isCurrent: state.project && state.project.id === p.id }))
+      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  }
+  function saveAsProject(name) {
+    if (!state.project.id) state.project.id = genId("proj");
+    if (name) state.project.name = name;
+    const list = loadProjectsList();
+    const idx = list.findIndex(p => p.id === state.project.id);
+    const entry = { id: state.project.id, name: state.project.name, updatedAt: new Date().toISOString(), snapshot: state };
+    if (idx === -1) list.push(entry); else list[idx] = entry;
+    writeProjectsList(list);
+    save();
+  }
+  function loadProject(id) {
+    const list = loadProjectsList();
+    const entry = list.find(p => p.id === id);
+    if (!entry) return false;
+    state = Object.assign(freshState(), JSON.parse(JSON.stringify(entry.snapshot)));
+    save();
+    return true;
+  }
+  function deleteProject(id) {
+    writeProjectsList(loadProjectsList().filter(p => p.id !== id));
+  }
+  function newProject(name) {
+    state = freshState();
+    state.project.name = name || "Untitled Project";
+    saveAsProject(state.project.name);
+    return state;
+  }
+
   // Fetches live weather (Open-Meteo) + real annual solar climatology
   // (NASA POWER, below) for a predefined location and stores it as a
   // single pseudo-season "Live" inside a {seasons:{...}} map, so every
   // screen that reads STORE.currentSeason() works unchanged.
-  async function loadRealClimate(locationId) {
-    const loc = DATA.predefinedLocationById(locationId);
-    if (!loc) throw new Error("Unknown location: " + locationId);
+  // Accepts either a predefined location id (string) or a custom location
+  // object { name, latitude, longitude, region?, elevationM? } — e.g. from
+  // manual coordinate entry / reverse geocoding.
+  async function loadRealClimate(locationIdOrCustom) {
+    let loc;
+    if (typeof locationIdOrCustom === "string") {
+      loc = DATA.predefinedLocationById(locationIdOrCustom);
+      if (!loc) throw new Error("Unknown location: " + locationIdOrCustom);
+    } else {
+      loc = locationIdOrCustom;
+    }
     const climate = await window.APP_WEATHER.fetchOpenMeteo(loc.latitude, loc.longitude);
-    state.locationKey = loc.id;
+    state.locationKey = loc.id || null;
     state.location = {
-      key: loc.id, label: loc.name,
-      country: "India", state: loc.region, district: "",
+      key: loc.id || null, label: loc.name,
+      country: "India", state: loc.region || "Custom coordinates", district: "",
       latitude: loc.latitude, longitude: loc.longitude,
-      elevationM: climate.elevationM || loc.elevationM,
+      elevationM: climate.elevationM || loc.elevationM || null,
       // Extrapolated placeholder until/unless NASA POWER climatology (below)
       // supplies a real 20-year annual figure — kept only as a fallback.
       annualSolarKwhM2Yr: Math.round(climate.solarKwhDay * 365),
@@ -99,7 +188,8 @@ window.APP_STORE = (function () {
       state.location.avgTempCAnnual = nasa.tempCAnnual;
       state.location.solarDataSource = {
         label: nasa.label, period: nasa.period, fetchedAt: nasa.fetchedAt,
-        ghiKwhM2DayAnnual: nasa.ghiKwhM2DayAnnual, dniKwhM2DayAnnual: nasa.dniKwhM2DayAnnual
+        ghiKwhM2DayAnnual: nasa.ghiKwhM2DayAnnual, dniKwhM2DayAnnual: nasa.dniKwhM2DayAnnual,
+        monthlyGhi: nasa.monthlyGhi, monthlyTemp: nasa.monthlyTemp
       };
       save();
     } catch (e) {
@@ -145,6 +235,7 @@ window.APP_STORE = (function () {
   return {
     get, save, reset, loadRealClimate,
     currentSeason, updateDesign,
-    recordSimulation, recordOptimization, addValidationDataset, defaultDesign
+    recordSimulation, recordOptimization, addValidationDataset, defaultDesign,
+    listProjects, saveAsProject, loadProject, deleteProject, newProject
   };
 })();

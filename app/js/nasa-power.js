@@ -22,6 +22,13 @@ window.APP_NASA = (function () {
       return obj;
     } catch (e) { return null; }
   }
+  // Ignores TTL — last-resort fallback when every live attempt has failed.
+  function readStaleCache(lat, lon) {
+    try {
+      const raw = localStorage.getItem(cacheKey(lat, lon));
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
   function writeCache(lat, lon, data) {
     try { localStorage.setItem(cacheKey(lat, lon), JSON.stringify(data)); } catch (e) { /* storage unavailable */ }
   }
@@ -38,14 +45,20 @@ window.APP_NASA = (function () {
       "?parameters=ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DNI,T2M" +
       `&community=RE&longitude=${lon}&latitude=${lat}&format=JSON`;
 
-    let resp;
+    let j;
     try {
-      resp = await fetch(url);
+      j = await window.U.fetchJsonWithRetry(url, {
+        timeoutMs: 5000, retries: 2,
+        onRetry: () => { if (window.APP && window.APP.toast) window.APP.toast("Connection slow… retrying NASA POWER…"); }
+      });
     } catch (e) {
-      throw new Error("Network error reaching NASA POWER — check your internet connection.");
+      const stale = readStaleCache(lat, lon);
+      if (stale) {
+        if (window.APP && window.APP.toast) window.APP.toast("Connection slow — using cached solar data.");
+        return { ...stale, stale: true };
+      }
+      throw new Error("Could not reach NASA POWER after retrying — check your internet connection.");
     }
-    if (!resp.ok) throw new Error("NASA POWER request failed (HTTP " + resp.status + ").");
-    const j = await resp.json();
     if (!j.properties || !j.properties.parameter) throw new Error("Unexpected NASA POWER response shape.");
 
     const ghi = j.properties.parameter.ALLSKY_SFC_SW_DWN || {};

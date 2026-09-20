@@ -108,10 +108,15 @@ AreaTherm/
   are architected, not wired up), no 3D preview (2D top-down schematic
   only), no ML surrogate model (no training data exists yet — see
   `ARCHITECTURE.md` §9).
-- Simple/Advanced mode toggle exists in the UI but does not yet gate which
-  fields are shown — both modes currently expose the full parameter set.
+- Simple mode shows Dashboard, Guided Setup, Materials, What-If Analysis,
+  Reports and Settings only; Advanced mode exposes all screens.
 - State persists to `localStorage` per browser (not a shared multi-user
   database) — see `DATABASE_SCHEMA.sql` for the production data model.
+- A service worker (`app/sw.js`) caches only the app's own HTML/CSS/JS so
+  the UI loads and runs with no network — it never caches or fabricates
+  climate data. Offline runs are limited to whatever locations already have
+  a live weather fetch cached in `localStorage` from an earlier online
+  session (7-day Open-Meteo / 5-day NASA POWER TTL).
 
 ## Next steps toward the full brief
 

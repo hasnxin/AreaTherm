@@ -4,7 +4,38 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>AreaTherm — Passive Shelter Thermal Design Platform</title>
+<script>
+  // Applied before first paint so a saved dark-mode preference doesn't
+  // flash light for a frame. Reads localStorage directly — store.js
+  // hasn't loaded yet at this point in <head>.
+  (function () {
+    try {
+      var raw = localStorage.getItem("areatherm_state_v1");
+      var theme = raw ? (JSON.parse(raw).theme || "light") : "light";
+      document.documentElement.setAttribute("data-theme", theme === "dark" ? "dark" : "light");
+    } catch (e) { /* default light */ }
+  })();
+</script>
 <link rel="stylesheet" href="css/styles.css" />
+<!-- Leaflet: the one external UI library in this app, used only for the
+     optional map location picker on the Location & Climate page. Pinned
+     version, official CDN. Map tiles come from OpenStreetMap. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Three.js: ES modules via import map, no bundler — the same zero-build-
+     step approach as the rest of this app. Used only by js/shelter3d.js,
+     for the optional 3D preview on the Shelter Designer page. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="js/shelter3d.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -20,15 +51,15 @@
       <nav class="nav" id="mainNav">
         <a href="#/dashboard" data-route="dashboard">Dashboard</a>
         <a href="#/guided" data-route="guided">Guided Setup</a>
-        <a href="#/location" data-route="location">Location &amp; Climate</a>
-        <a href="#/designer" data-route="designer">Shelter Designer</a>
+        <a href="#/location" data-route="location" class="nav-advanced-only">Location &amp; Climate</a>
+        <a href="#/designer" data-route="designer" class="nav-advanced-only">Shelter Designer</a>
         <a href="#/materials" data-route="materials">Materials</a>
-        <a href="#/simulation" data-route="simulation">Thermal Simulation</a>
-        <a href="#/optimization" data-route="optimization">Optimization</a>
+        <a href="#/simulation" data-route="simulation" class="nav-advanced-only">Thermal Simulation</a>
+        <a href="#/optimization" data-route="optimization" class="nav-advanced-only">Optimization</a>
         <a href="#/whatif" data-route="whatif">What-If Analysis</a>
-        <a href="#/validation" data-route="validation">Validation</a>
+        <a href="#/validation" data-route="validation" class="nav-advanced-only">Validation</a>
         <a href="#/reports" data-route="reports">Reports</a>
-        <a href="#/evaluator" data-route="evaluator">Evaluator Summary</a>
+        <a href="#/evaluator" data-route="evaluator" class="nav-advanced-only">Evaluator Summary</a>
         <a href="#/settings" data-route="settings">Settings</a>
       </nav>
       <div class="sidebar-footer">
@@ -50,6 +81,7 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <span id="offlineBadge" class="data-badge illustrative" hidden>⚠ Offline — running from cache, live data unavailable</span>
           <button id="runLiveDemoBtn" class="btn btn-accent">▶ Run Live Demo</button>
         </div>
       </header>
@@ -75,6 +107,7 @@
   <script src="js/engine.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/validator.js"></script>
   <script src="js/ui-1.js"></script>
   <script src="js/ui-2.js"></script>
   <script src="js/ui-3.js"></script>

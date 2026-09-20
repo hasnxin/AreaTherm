@@ -25,7 +25,7 @@ Base path: `/api/v1`. Auth: `Authorization: Bearer <JWT>`. All bodies JSON.
 - `PUT /materials/{id}` — edit (engineering DB values are configurable, not hard-coded)
 
 ## Comfort Profiles
-- `GET /comfort-profiles` — presets (human, agri produce, livestock, seed storage, nursery, equipment, custom)
+- `GET /comfort-profiles` — human occupancy only: base min/max comfort temperature plus clothing-level (clo) and activity-level (met) presets, which shift the effective minimum comfort temperature (see `app/js/data.js`)
 - `POST /comfort-profiles`
 
 ## Simulation

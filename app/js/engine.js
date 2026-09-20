@@ -43,13 +43,28 @@ window.APP_ENGINE = (function () {
   function computeGeometry(design) {
     let L = design.length || 6, W = design.width || 4, H = design.height || 3;
     let floorArea, roofArea, perimeter;
-    if (design.shape === "CIRCULAR" || design.shape === "DOME" || design.shape === "SEMI_CIRCULAR") {
+    const isRound = design.shape === "CIRCULAR" || design.shape === "DOME" || design.shape === "SEMI_CIRCULAR";
+    const isLShape = design.shape === "L_SHAPE";
+    if (isRound) {
       const d = design.diameter || Math.max(L, W) || 5;
       const r = d / 2;
       floorArea = Math.PI * r * r;
       perimeter = Math.PI * d;
       roofArea = (design.shape === "DOME") ? 2 * Math.PI * r * r : floorArea;
       L = W = d;
+    } else if (isLShape) {
+      // Two rectangular wings sharing a corner — wing B sits atop the left
+      // portion of wing A's far edge (a standard L-tromino layout). Area
+      // adds per the brief; perimeter follows from that same layout
+      // (widthB's two edges cancel out of the total). Simplified: modeled
+      // as a single thermal zone with one combined wall face, not two
+      // independently-coupled zones — a documented approximation, not a
+      // full multi-zone simulation.
+      const lA = design.lengthA || 4, wA = design.widthA || 4, lB = design.lengthB || 3, wB = design.widthB || 3;
+      floorArea = lA * wA + lB * wB;
+      perimeter = 2 * (lA + wA + lB);
+      roofArea = floorArea;
+      L = lA; W = wA;
     } else { // RECTANGULAR / SQUARE / CUSTOM (treated as rectangular)
       if (design.shape === "SQUARE") { W = L; }
       floorArea = L * W;
@@ -59,9 +74,12 @@ window.APP_ENGINE = (function () {
     const volume = floorArea * H;
     const frontAzimuth = frontAzimuthOf(design);
     let faces;
-    if (design.shape === "CIRCULAR" || design.shape === "DOME" || design.shape === "SEMI_CIRCULAR") {
+    if (isRound) {
       const wallArea = perimeter * H;
       faces = [{ name: "CURVED_WALL", areaM2: wallArea, factor: faceFactor(frontAzimuth, 0) }];
+    } else if (isLShape) {
+      const wallArea = perimeter * H;
+      faces = [{ name: "L_WALL", areaM2: wallArea, factor: faceFactor(frontAzimuth, 0) }];
     } else {
       faces = [
         { name: "FRONT", areaM2: L * H, factor: faceFactor(frontAzimuth, 0) },

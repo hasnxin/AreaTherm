@@ -24,70 +24,61 @@ window.UI = window.UI || {};
       </div>
     </div>`;
 
+  const EXPLORE_TILES = [
+    { route: "guided", icon: "🧭", title: "Guided Setup", desc: "A 5-step wizard from location to results — the fastest way to run your first simulation." },
+    { route: "location", icon: "🌐", title: "Location & Climate", desc: "Pick from 10 reference locations and load live weather + solar climatology." },
+    { route: "designer", icon: "📐", title: "Shelter Designer", desc: "Define shape, geometry and orientation for the shelter." },
+    { route: "materials", icon: "🧱", title: "Materials", desc: "Choose wall, roof, insulation, thermal-mass and glazing materials." },
+    { route: "simulation", icon: "🌡️", title: "Thermal Simulation", desc: "Run the hourly heat-balance model — indoor temperature, solar gain, heat flow." },
+    { route: "optimization", icon: "📊", title: "Optimization", desc: "Automatically rank design candidates by comfort, heat retention and cost." },
+    { route: "whatif", icon: "🔀", title: "What-If Analysis", desc: "Change one parameter and see its effect on comfort, instantly." },
+    { route: "validation", icon: "✅", title: "Validation", desc: "Compare model predictions against your own measured readings." },
+    { route: "reports", icon: "📄", title: "Reports", desc: "Generate a printable engineering report for the recommended design." },
+    { route: "evaluator", icon: "🗒️", title: "Evaluator Summary", desc: "A 2–3 minute story of the problem, the model and the recommended design." },
+    { route: "settings", icon: "⚙️", title: "Settings", desc: "Units, assumptions & limitations — what's real vs. a documented model assumption." }
+  ];
+
   UI.renderDashboard = function (root) {
     const s = STORE.get();
-    const last = s.lastSimulationResult;
     const hist = s.simulationHistory;
-    const avgScore = hist.length ? (hist.reduce((a, h) => a + h.thermalComfortScore, 0) / hist.length) : null;
-    const bestOpt = s.lastOptimizationResult ? s.lastOptimizationResult.recommended : null;
-    const uniqueLocations = new Set(hist.map(h => h.locationLabel)).size;
 
     root.innerHTML = `
       ${heroHtml(hist.length > 0)}
 
-      <!-- Primary metrics: the 4 numbers that matter most at a glance -->
-      <div class="grid grid-4" style="margin-bottom:18px;">
-        <div class="card" style="display:flex; align-items:center; gap:14px;">
-          <div id="dashGauge"></div>
-          <div><div class="metric-label">Thermal Comfort Score</div>
-            <div class="metric-sub">${last ? "Model Prediction" : "Run a simulation to populate"}</div></div>
-        </div>
-        <div class="card metric-card"><div class="metric-label">Solar Gain</div><div class="metric-value">${last ? last.daily.solarKwh : "—"}</div><div class="metric-sub">kWh/day ${last ? '<span class="tag tag-model">model</span>' : ""}</div></div>
-        <div class="card metric-card"><div class="metric-label">Heat Loss</div><div class="metric-value">${last ? last.daily.totalLossKwh : "—"}</div><div class="metric-sub">kWh/day ${last ? '<span class="tag tag-model">model</span>' : ""}</div></div>
-        <div class="card metric-card"><div class="metric-label">Avg. Indoor Temp</div><div class="metric-value">${last ? last.comfort.avgIndoor : "—"}</div><div class="metric-sub">°C ${last ? '<span class="tag tag-model">model</span>' : ""}</div></div>
-      </div>
-
-      ${s.location ? `<div class="card" style="margin-bottom:18px;">
+      ${s.location ? `<div class="card" style="margin:18px 0;">
           ${U.badge(s.climateSource)} <span class="hint">for ${U.esc(s.location.label)}</span>
           ${s.location.solarDataSource ? `<div class="hint" style="margin-top:6px;">Solar potential: <b>${s.location.annualSolarKwhM2Yr} kWh/m²/yr</b> · Avg. temp: <b>${s.location.avgTempCAnnual}°C</b> — NASA POWER (${U.esc(s.location.solarDataSource.period)})</div>` : ""}
         </div>` : ""}
 
-      <button class="collapse-toggle" id="advToggle">
-        <span class="chev">▾</span> Detailed Analytics
+      <button class="hamburger-toggle" id="exploreToggle" aria-expanded="false" style="margin-top:${s.location ? "0" : "22px"};">
+        <span class="hamburger-icon">☰</span> Explore the Platform
       </button>
-      <div class="collapse-body" id="advBody">
-        <div class="grid grid-4" style="margin-bottom:18px;">
-          <div class="card metric-card"><div class="metric-label">Total Simulations</div><div class="metric-value">${hist.length}</div><div class="metric-sub">this session</div></div>
-          <div class="card metric-card"><div class="metric-label">Locations Analysed</div><div class="metric-value">${uniqueLocations || (s.location ? 1 : 0)}</div><div class="metric-sub">${s.location ? U.esc(s.location.label) : "none selected"}</div></div>
-          <div class="card metric-card"><div class="metric-label">Best Performing Design</div><div class="metric-value">${bestOpt ? bestOpt.score.total.toFixed(0) : "—"}</div><div class="metric-sub">${bestOpt ? "Design " + bestOpt.label + " (optimization run)" : "run optimization"}</div></div>
-          <div class="card metric-card"><div class="metric-label">Avg. Thermal Comfort Score</div><div class="metric-value">${avgScore != null ? avgScore.toFixed(0) : "—"}</div><div class="metric-sub">across ${hist.length} run(s)</div></div>
-        </div>
-        <div class="grid grid-2">
-          <div class="card">
-            <h3>Comfort Score Breakdown</h3>
-            ${last ? `<ul class="checklist" style="font-size:12.5px;">
-                <li>Daytime comfort: <b>${last.comfort.dayComfortPct.toFixed(0)}%</b></li>
-                <li>Night comfort: <b>${last.comfort.nightComfortPct.toFixed(0)}%</b></li>
-                <li>Solar utilization: <b>${last.scores.solarUtilizationPct.toFixed(0)}%</b></li>
-                <li>Heat retention: <b>${last.scores.heatRetentionPct.toFixed(0)}%</b></li>
-              </ul>` : `<p class="subtitle">Run a thermal simulation to populate the comfort score.</p>`}
-          </div>
-          <div class="card">
-            <h3>Recent Simulations</h3>
-            ${hist.length ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Location</th><th>Design</th><th>Score</th></tr></thead><tbody>
-              ${hist.slice(0, 6).map(h => `<tr><td style="font-family:var(--mono);font-size:11px;">${h.id}</td><td>${U.esc(h.locationLabel)}</td><td>${U.esc(h.designName)}</td><td class="num">${h.thermalComfortScore}</td></tr>`).join("")}
-            </tbody></table></div>` : `<p class="subtitle">No simulations yet. Try Guided Setup or the live demo.</p>`}
-          </div>
+      <div class="explore-body" id="exploreBody">
+        <p class="subtitle">Every screen, one click away — pick a starting point.</p>
+        <div class="grid grid-3">
+          ${EXPLORE_TILES.map(t => `
+            <a class="nav-tile" href="#/${t.route}" data-route="${t.route}">
+              <div class="nav-tile-icon">${t.icon}</div>
+              <div class="nav-tile-title">${U.esc(t.title)}</div>
+              <div class="nav-tile-desc">${U.esc(t.desc)}</div>
+            </a>`).join("")}
         </div>
       </div>`;
 
-    CH.scoreGauge(U.qs("#dashGauge", root), last ? last.scores.thermalComfortScore : 0);
     U.on("#heroDemoBtn", "click", () => window.APP.runLiveDemo(), root);
     U.on("#heroWorkflowBtn", "click", () => window.APP.navigate("guided"), root);
-    U.on("#advToggle", "click", () => {
-      U.qs("#advToggle", root).classList.toggle("open");
-      U.qs("#advBody", root).classList.toggle("open");
+    U.on("#exploreToggle", "click", () => {
+      const btn = U.qs("#exploreToggle", root), body = U.qs("#exploreBody", root);
+      const open = body.classList.toggle("open");
+      btn.classList.toggle("open", open);
+      btn.setAttribute("aria-expanded", String(open));
     }, root);
+    U.qsa(".nav-tile", root).forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        window.APP.navigate(el.dataset.route);
+      });
+    });
   };
 
   // ---------------------------------------------------------------------
@@ -115,6 +106,19 @@ window.UI = window.UI || {};
         <div class="metric-card"><div class="metric-label">Sunshine Window</div><div class="metric-value" style="font-size:18px;">${season.sunrise}h – ${season.sunset}h</div></div>
         <div class="metric-card"><div class="metric-label">Wind / RH / Cloud</div><div class="metric-value" style="font-size:15px;">${season.windMs} m/s · ${season.rhPct}% · ${season.cloudPct}%</div></div>
       </div>
+      ${(() => {
+        const zone = U.classifyClimate(s.location, season);
+        const recs = U.climateRecommendations(s.location, season);
+        if (!recs.length) return "";
+        return `
+        <div class="card" style="margin-top:14px; background:var(--bg);">
+          <h3>Design Tips for This Climate ${zone ? `<span class="tag tag-model">${U.esc(zone)}</span>` : ""}</h3>
+          <ul class="checklist">
+            ${recs.map(r => `<li><b>${U.esc(r.text)}</b> — ${U.esc(r.reason)}</li>`).join("")}
+          </ul>
+          <p class="hint" style="margin-top:6px;">Rule-based guidance derived from this location's own loaded climate numbers, not a lookup table of per-city advice.</p>
+        </div>`;
+      })()}
       ${s.location && s.location.solarDataSource ? `
       <div class="data-badge real" style="margin-top:10px;">✓ Annual solar potential: <b>${U.esc(String(s.location.annualSolarKwhM2Yr))} kWh/m²/yr</b>
         (GHI ${s.location.solarDataSource.ghiKwhM2DayAnnual.toFixed(2)} kWh/m²/day, DNI ${s.location.solarDataSource.dniKwhM2DayAnnual.toFixed(2)} kWh/m²/day)
@@ -123,17 +127,43 @@ window.UI = window.UI || {};
       <div class="data-badge illustrative" style="margin-top:10px;">⚠ Annual solar figure (${s.location.annualSolarKwhM2Yr} kWh/m²/yr) is extrapolated from the current 7-day forecast, not a real climatology — NASA POWER climatology fetch unavailable.</div>
       ` : "")}
       <h3 style="margin-top:16px;">24-Hour Ambient Temperature &amp; Solar Irradiance ${season.hourly ? "(live hourly curve)" : "(model input curve)"}</h3>
-      <div id="climateChart"></div>`;
+      <div id="climateChart"></div>
+      ${s.location && s.location.solarDataSource && s.location.solarDataSource.monthlyTemp ? `
+      <h3 style="margin-top:20px;">Monthly Climate Normals <span class="tag tag-model">NASA POWER, ${U.esc(s.location.solarDataSource.period)}</span></h3>
+      <div class="grid grid-2">
+        <div><p class="hint">Monthly mean temperature</p><div id="monthlyTempChart"></div></div>
+        <div><p class="hint">Monthly solar irradiance</p><div id="monthlySolarChart"></div></div>
+      </div>
+      <p class="hint" id="monthlyPeaks" style="margin-top:8px;"></p>
+      ` : ""}
+      `;
     const hours = Array.from({ length: 25 }, (_, i) => i);
     CH.lineChart(U.qs("#climateChart", box), [
       { name: "Ambient Temp (°C)", color: "#c93b3b", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
-    ], { height: 200, yLabel: "°C", xLabel: "Hour of day" });
+    ], { height: 200, yLabel: "°C", xLabel: "Hour of day", tempZones: true });
     const solarDiv = document.createElement("div");
     solarDiv.style.marginTop = "10px";
     U.qs("#climateChart", box).appendChild(solarDiv);
     CH.lineChart(solarDiv, [
       { name: "Solar Irradiance (W/m²)", color: "#d98a12", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
     ], { height: 180, yLabel: "W/m²", xLabel: "Hour of day" });
+
+    if (s.location && s.location.solarDataSource && s.location.solarDataSource.monthlyTemp) {
+      const monthlyTemp = s.location.solarDataSource.monthlyTemp;
+      const monthlyGhi = s.location.solarDataSource.monthlyGhi;
+      CH.monthlyBarChart(U.qs("#monthlyTempChart", box),
+        monthlyTemp.map(m => ({ label: m.month, mean: m.tempC, min: m.tempMinC, max: m.tempMaxC })),
+        { height: 220, yLabel: "°C" });
+      CH.lineChart(U.qs("#monthlySolarChart", box), [
+        { name: "Solar (kWh/m²/day)", color: "#d98a12", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
+      ], { height: 220, yLabel: "kWh/m²/day", xFormat: (x) => monthlyGhi[Math.round(x)] ? monthlyGhi[Math.round(x)].month : "" });
+      const hottest = monthlyTemp.reduce((a, b) => (b.tempC > a.tempC ? b : a));
+      const coldest = monthlyTemp.reduce((a, b) => (b.tempC < a.tempC ? b : a));
+      const sunniest = monthlyGhi.reduce((a, b) => (b.kwhM2Day > a.kwhM2Day ? b : a));
+      U.qs("#monthlyPeaks", box).textContent =
+        `Hottest month: ${hottest.month} (${hottest.tempC.toFixed(1)}°C) · Coldest month: ${coldest.month} (${coldest.tempC.toFixed(1)}°C) · Best month for solar heating: ${sunniest.month} (${sunniest.kwhM2Day.toFixed(2)} kWh/m²/day).`;
+    }
+
     U.on("#seasonSwitch", "change", () => {
       s.seasonKey = U.qs("#seasonSwitch", box).value;
       STORE.save();
@@ -161,12 +191,23 @@ window.UI = window.UI || {};
           <button class="btn btn-accent" id="loadRealBtn">🌐 Load Real Weather (Open-Meteo)</button>
           <span id="fetchStatus" class="hint"></span>
         </div>
+        <div id="locationMap" style="height:260px; border-radius:8px; margin-top:12px; z-index:0;"></div>
+        <p class="hint" style="margin-top:6px;">Click a pin to load that location's live weather. Map tiles © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:var(--accent);">OpenStreetMap</a> contributors.</p>
         <p class="hint" style="margin-top:10px;">Live weather from
         <a href="https://open-meteo.com" target="_blank" rel="noopener" style="color:var(--accent);">Open-Meteo</a>
         (no API key, cached 7 days) — a 7-day forecast averaged into a typical-day curve — plus real 20-year
         solar/temperature climatology from <a href="https://power.larc.nasa.gov" target="_blank" rel="noopener"
         style="color:var(--accent);">NASA POWER</a>. No hand-authored or illustrative climate data ships with
         this app; every number here comes from a live source.</p>
+
+        <h3 style="margin-top:16px;">Or Enter Coordinates Directly</h3>
+        <div class="form-inline">
+          <div class="form-row"><label>Latitude</label><input id="coordLat" type="number" step="0.0001" placeholder="e.g. 34.15"></div>
+          <div class="form-row"><label>Longitude</label><input id="coordLon" type="number" step="0.0001" placeholder="e.g. 77.58"></div>
+          <div class="form-row" style="align-self:flex-end;"><button class="btn" id="loadCoordBtn">📍 Use These Coordinates</button></div>
+        </div>
+        <div id="coordStatus" class="hint"></div>
+        <p class="hint">Snaps to a reference location if you're within ~30 km of one; otherwise resolves a place name via OpenStreetMap and loads live weather for that exact point.</p>
       </div>
 
       <div class="card" style="margin-top:16px;">
@@ -176,56 +217,158 @@ window.UI = window.UI || {};
           <div class="metric-card"><div class="metric-label">Region</div><div class="metric-value" style="font-size:16px;">${loc ? U.esc(loc.state) : "—"}</div></div>
           <div class="metric-card"><div class="metric-label">Coordinates</div><div class="metric-value" style="font-size:14px;">${loc ? loc.latitude.toFixed(3) + ", " + loc.longitude.toFixed(3) : "—"}</div></div>
           <div class="metric-card"><div class="metric-label">Elevation</div><div class="metric-value" style="font-size:16px;">${loc ? loc.elevationM + " m" : "—"}</div></div>
+          <div class="metric-card"><div class="metric-label">Climate Zone</div><div class="metric-value" style="font-size:15px;">${season ? U.esc(U.classifyClimate(loc, season)) : "—"}</div></div>
         </div>
       </div>
 
       <div class="card" style="margin-top:16px;" id="climateSummaryBox"></div>
 
-      <div class="card" style="margin-top:16px;">
-        <h3>Comfort Requirement</h3>
-        <div class="form-inline">
-          <div class="form-row"><label>Comfort profile</label>
-            <select id="comfortProfile">${DATA.COMFORT_PROFILES.map(c => `<option value="${c.id}" ${s.design.comfort.profileId === c.id ? "selected" : ""}>${c.label}</option>`).join("")}</select>
-          </div>
-          <div class="form-row"><label>Min comfortable temp (°C)</label><input id="comfortMin" type="number" value="${s.design.comfort.min}"></div>
-          <div class="form-row"><label>Max comfortable temp (°C)</label><input id="comfortMax" type="number" value="${s.design.comfort.max}"></div>
-        </div>
-        <p class="hint">Comfort range is not universally fixed — it depends on occupancy type (human, livestock,
-        produce, seed storage, nursery, equipment). Select a profile or enter a custom range.</p>
-        <button class="btn btn-accent btn-sm" id="saveComfortBtn">Save comfort requirement</button>
-      </div>`;
+      ${comfortCardHtml(s, season)}`;
 
     renderClimateSummary(root, s, season);
+    initLocationMap(root);
 
-    U.on("#loadRealBtn", "click", async () => {
-      const id = U.qs("#locSelect", root).value;
+    async function loadLocationById(id) {
       const btn = U.qs("#loadRealBtn", root);
       const statusEl = U.qs("#fetchStatus", root);
-      btn.disabled = true;
-      statusEl.textContent = "Fetching live weather from Open-Meteo…";
+      if (btn) btn.disabled = true;
+      if (statusEl) statusEl.textContent = "Fetching live weather from Open-Meteo…";
       try {
         await STORE.loadRealClimate(id);
         window.APP.render();
         window.APP.toast("Live weather loaded from Open-Meteo.");
       } catch (e) {
+        if (statusEl) statusEl.textContent = "";
+        alert("Could not fetch live weather: " + e.message + "\n\nCheck your internet connection and try again.");
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    U.on("#loadRealBtn", "click", () => loadLocationById(U.qs("#locSelect", root).value), root);
+
+    function initLocationMap(root) {
+      const mapEl = U.qs("#locationMap", root);
+      if (!mapEl || !window.L) return; // Leaflet failed to load (offline/CDN blocked) — map is optional, rest of the page works without it
+      const map = window.L.map(mapEl, { scrollWheelZoom: false }).setView([22, 79], 5);
+      window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors", maxZoom: 12
+      }).addTo(map);
+      DATA.PREDEFINED_LOCATIONS.forEach(l => {
+        const marker = window.L.marker([l.latitude, l.longitude]).addTo(map);
+        marker.bindPopup(`<b>${U.esc(l.name)}</b><br>${l.elevationM} m — ${U.esc(l.category)}<br><button class="btn btn-accent btn-sm" style="margin-top:6px;" data-map-select="${l.id}">Load this location</button>`);
+        marker.on("popupopen", () => {
+          const btn = document.querySelector(`[data-map-select="${l.id}"]`);
+          if (btn) btn.addEventListener("click", () => { map.closePopup(); loadLocationById(l.id); });
+        });
+      });
+      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#1f8a9e", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
+    }
+
+    U.on("#loadCoordBtn", "click", async () => {
+      const lat = parseFloat(U.qs("#coordLat", root).value);
+      const lon = parseFloat(U.qs("#coordLon", root).value);
+      const btn = U.qs("#loadCoordBtn", root);
+      const statusEl = U.qs("#coordStatus", root);
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lon) || lon < -180 || lon > 180) {
+        statusEl.textContent = "Enter a valid latitude (-90 to 90) and longitude (-180 to 180).";
+        return;
+      }
+      btn.disabled = true;
+      statusEl.textContent = "Resolving location…";
+      try {
+        const near = DATA.nearestPredefinedLocation(lat, lon);
+        if (near) {
+          statusEl.textContent = `Within ~30km of ${near.name} — loading that reference location.`;
+          await STORE.loadRealClimate(near.id);
+        } else {
+          const resolved = await U.reverseGeocode(lat, lon);
+          statusEl.textContent = resolved
+            ? `Resolved to ${resolved.name}${resolved.region ? ", " + resolved.region : ""} — fetching live weather…`
+            : "Unknown location — using entered coordinates.";
+          await STORE.loadRealClimate({
+            name: resolved ? resolved.name : `${lat.toFixed(3)}, ${lon.toFixed(3)}`,
+            region: resolved ? resolved.region : "Custom coordinates",
+            latitude: lat, longitude: lon
+          });
+        }
+        window.APP.render();
+        window.APP.toast("Live weather loaded for the entered coordinates.");
+      } catch (e) {
         statusEl.textContent = "";
         alert("Could not fetch live weather: " + e.message + "\n\nCheck your internet connection and try again.");
+      } finally {
         btn.disabled = false;
       }
     }, root);
 
-    U.on("#saveComfortBtn", "click", () => {
-      const profileId = U.qs("#comfortProfile", root).value;
-      const min = parseFloat(U.qs("#comfortMin", root).value);
+    wireComfortCard(root);
+  };
+
+  // ---------------------------------------------------------------------
+  // Comfort Requirement — human occupancy only. Base min/max plus
+  // clothing/activity presets that shift the *effective* min comfort
+  // temperature actually fed to the thermal engine (see DATA.effectiveComfortMin).
+  function comfortCardHtml(s, season) {
+    const c = s.design.comfort;
+    const baseMin = c.baseMin != null ? c.baseMin : c.min;
+    const clothingId = c.clothingLevel || "TYPICAL";
+    const activityId = c.activityLevel || "SEATED";
+    const effMin = DATA.effectiveComfortMin(baseMin, clothingId, activityId, c.max);
+    const rh = season ? season.rhPct : null;
+    const band = DATA.HUMIDITY_COMFORT_BAND;
+    const rhOk = rh != null ? (rh >= band.min && rh <= band.max) : null;
+
+    return `
+      <div class="card" style="margin-top:16px;">
+        <h3>Comfort Requirement — Human Occupancy</h3>
+        <p class="subtitle">This prototype models thermal comfort for human occupants only.</p>
+        <div class="form-inline">
+          <div class="form-row"><label>Min comfortable temp (°C)</label><input id="comfortMin" type="number" value="${baseMin}"></div>
+          <div class="form-row"><label>Max comfortable temp (°C)</label><input id="comfortMax" type="number" value="${c.max}"></div>
+          <div class="form-row"><label>Clothing level</label>
+            <select id="comfortClothing">${DATA.CLOTHING_LEVELS.map(cl => `<option value="${cl.id}" ${clothingId === cl.id ? "selected" : ""}>${cl.label} (${cl.clo} clo)</option>`).join("")}</select>
+          </div>
+          <div class="form-row"><label>Activity level</label>
+            <select id="comfortActivity">${DATA.ACTIVITY_LEVELS.map(a => `<option value="${a.id}" ${activityId === a.id ? "selected" : ""}>${a.label} (${a.met} met)</option>`).join("")}</select>
+          </div>
+        </div>
+        <div class="metric-card" style="max-width:300px;">
+          <div class="metric-label">Effective Comfort Range</div>
+          <div class="metric-value" id="effComfortValue" style="font-size:18px;">${effMin}–${c.max} °C</div>
+          <div class="metric-sub">adjusted for clothing &amp; activity — this is what the simulation uses</div>
+        </div>
+        ${rh != null ? `<p class="hint" style="margin-top:10px;">Relative humidity: <b>${rh}% RH</b> — ${rhOk ? "within" : "outside"} the ${band.min}–${band.max}% RH band generally considered comfortable (informational; not used by the thermal model).</p>` : ""}
+        <p class="hint" style="margin-top:6px;">Clothing and activity shift the minimum comfortable temperature only — a documented modelling heuristic (roughly 3–4°C per clothing/activity step), not a measured PMV/PPD result.</p>
+        <button class="btn btn-accent btn-sm" id="saveComfortBtn" style="margin-top:8px;">Save comfort requirement</button>
+      </div>`;
+  }
+
+  function wireComfortCard(root) {
+    const recompute = () => {
+      const baseMin = parseFloat(U.qs("#comfortMin", root).value);
       const max = parseFloat(U.qs("#comfortMax", root).value);
-      STORE.updateDesign({ comfort: { profileId, min, max } });
+      const clothingId = U.qs("#comfortClothing", root).value;
+      const activityId = U.qs("#comfortActivity", root).value;
+      const effMin = DATA.effectiveComfortMin(baseMin, clothingId, activityId, max);
+      const el = U.qs("#effComfortValue", root);
+      if (el) el.textContent = `${effMin}–${max} °C`;
+    };
+    ["#comfortMin", "#comfortMax", "#comfortClothing", "#comfortActivity"].forEach(sel => {
+      U.on(sel, "input", recompute, root);
+      U.on(sel, "change", recompute, root);
+    });
+    U.on("#saveComfortBtn", "click", () => {
+      const baseMin = parseFloat(U.qs("#comfortMin", root).value);
+      const max = parseFloat(U.qs("#comfortMax", root).value);
+      const clothingLevel = U.qs("#comfortClothing", root).value;
+      const activityLevel = U.qs("#comfortActivity", root).value;
+      STORE.updateDesign({ comfort: {
+        profileId: "human", baseMin, max, clothingLevel, activityLevel,
+        min: DATA.effectiveComfortMin(baseMin, clothingLevel, activityLevel, max)
+      } });
       window.APP.toast("Comfort requirement saved.");
     }, root);
-    U.on("#comfortProfile", "change", () => {
-      const p = DATA.COMFORT_PROFILES.find(c => c.id === U.qs("#comfortProfile", root).value);
-      if (p) { U.qs("#comfortMin", root).value = p.min; U.qs("#comfortMax", root).value = p.max; }
-    }, root);
-  };
+  }
 
   // ---------------------------------------------------------------------
   const BEARING = { SOUTH: 180, SE: 135, EAST: 90, NE: 45, NORTH: 0, NW: 315, WEST: 270, SW: 225 };
@@ -234,29 +377,144 @@ window.UI = window.UI || {};
     return BEARING[design.orientation] ?? 180;
   }
 
+  // ---- 3D preview (Shelter Designer) ------------------------------------
+  // Purely decorative wall-tint per material — these materials have no
+  // visual-color field in the engineering data (only thermal properties),
+  // so this is a deliberate illustrative choice, not a modeled property.
+  const WALL_COLOR_BY_MATERIAL = {
+    wall_concrete: "#b9b9b0", wall_brick: "#a85c3f", wall_stone: "#8a8378",
+    wall_adobe: "#c99b6a", wall_rammed_earth: "#b08b5e", wall_mud_block: "#a97c50",
+    wall_aac: "#d8d8d0", wall_insulated_panel: "#e8e8e8", wall_composite: "#c2b8a3"
+  };
+  let currentShelter3D = null;
+  window.addEventListener("hashchange", () => {
+    if (location.hash !== "#/designer" && currentShelter3D) {
+      currentShelter3D.dispose();
+      currentShelter3D = null;
+    }
+  });
+
+  const COMPASS_8 = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  function compassLabel(bearingDeg) {
+    return COMPASS_8[Math.round(((bearingDeg % 360) + 360) % 360 / 45) % 8];
+  }
+  // Rotates (dx,dy) — relative to the shape center, pre-rotation — by
+  // angleDeg the same way SVG's transform="rotate(angleDeg)" would, so
+  // labels placed outside the rotated shape land in the right screen spot
+  // without themselves being rotated (which would render sideways text).
+  function rotatePoint(dx, dy, angleDeg) {
+    const rad = angleDeg * Math.PI / 180;
+    return { x: dx * Math.cos(rad) - dy * Math.sin(rad), y: dx * Math.sin(rad) + dy * Math.cos(rad) };
+  }
+
   function drawShelterPreview(container, design, geom) {
-    const size = 260, cx = size / 2, cy = size / 2;
-    const scale = Math.min(180 / Math.max(geom.L, geom.W || geom.L), 6);
-    const w = geom.W ? geom.L * scale : geom.L * scale;
-    const h = geom.W ? geom.W * scale : geom.L * scale;
-    const bearing = bearingOf(design);
+    const size = 300, cx = size / 2, cy = size / 2;
     const isRound = ["CIRCULAR", "DOME", "SEMI_CIRCULAR"].includes(design.shape);
+    const isLShape = design.shape === "L_SHAPE";
+    // Overall bounding extent in metres — drives scale, window placement
+    // and the wall/dimension labels below. For the L-shape this is wing
+    // A's length by (wing A's width + wing B's length); everything else
+    // in this function treats an L-shape as its bounding box, a
+    // deliberate simplification for the compass/window labeling.
+    let overallL, overallW;
+    if (isLShape) {
+      overallL = design.lengthA || 4;
+      overallW = (design.widthA || 4) + (design.lengthB || 3);
+    } else {
+      overallL = geom.L;
+      overallW = geom.W || geom.L;
+    }
+    const scale = Math.min(150 / Math.max(overallL, overallW), 6);
+    const w = overallL * scale, h = overallW * scale;
+    const bearing = bearingOf(design);
     let shapeSvg;
     if (isRound) {
       shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
+    } else if (isLShape) {
+      const lApx = (design.lengthA || 4) * scale, wApx = (design.widthA || 4) * scale, wBpx = Math.min((design.widthB || 3) * scale, lApx);
+      const ox = cx - w / 2, oy = cy - h / 2;
+      const pts = [
+        [ox, oy + h], [ox + lApx, oy + h], [ox + lApx, oy + h - wApx],
+        [ox + wBpx, oy + h - wApx], [ox + wBpx, oy], [ox, oy]
+      ];
+      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
     } else {
       shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
     }
-    // window mark on the FRONT face (rotated by bearing)
-    const winMark = `<rect x="${cx - w * 0.18}" y="${cy - h / 2 - 4}" width="${w * 0.36}" height="8" fill="#2fb8cf"/>`;
+
+    // Window marks on the actual configured face (FRONT/BACK/LEFT/RIGHT),
+    // one per window up to 6 spread evenly along that edge — not just a
+    // single generic mark regardless of count.
+    const win = design.windows && design.windows[0];
+    const edgeOf = { FRONT: 0, PRIMARY: 0, RIGHT: 90, BACK: 180, LEFT: 270 };
+    const winEdgeAngle = edgeOf[win ? win.orientation : "FRONT"] ?? 0;
+    const winCount = win ? Math.min(6, Math.max(1, win.count || 1)) : 0;
+    let winMarks = "";
+    if (win && winCount > 0) {
+      const along = winEdgeAngle % 180 === 0 ? w : h; // horizontal edges use width, vertical edges use height
+      for (let i = 0; i < winCount; i++) {
+        const t = (i + 1) / (winCount + 1) - 0.5; // -0.5..0.5 spread along the edge
+        const markLen = Math.min(along / (winCount + 1.5), along * 0.3);
+        const perp = winEdgeAngle % 180 === 0 ? { dx: t * along, dy: (winEdgeAngle === 0 ? -1 : 1) * h / 2 } : { dx: (winEdgeAngle === 90 ? 1 : -1) * w / 2, dy: t * along };
+        winMarks += winEdgeAngle % 180 === 0
+          ? `<rect x="${cx + perp.dx - markLen / 2}" y="${cy + perp.dy - 4}" width="${markLen}" height="8" fill="#2fb8cf"/>`
+          : `<rect x="${cx + perp.dx - 4}" y="${cy + perp.dy - markLen / 2}" width="8" height="${markLen}" fill="#2fb8cf"/>`;
+      }
+    }
+
+    const labelOffset = 16;
+    const edges = isRound ? [] : [
+      { angle: 0, dx: 0, dy: -h / 2 - labelOffset },
+      { angle: 90, dx: w / 2 + labelOffset, dy: 0 },
+      { angle: 180, dx: 0, dy: h / 2 + labelOffset },
+      { angle: 270, dx: -w / 2 - labelOffset, dy: 0 }
+    ];
+    const wallLabels = edges.map(e => {
+      const p = rotatePoint(e.dx, e.dy, bearing);
+      const label = compassLabel(bearing + e.angle);
+      return `<text x="${cx + p.x}" y="${cy + p.y + 3}" text-anchor="middle" class="chart-tick" font-size="9.5">${label}</text>`;
+    }).join("");
+
+    // Dimension labels — the front/back edge spans the Length, the
+    // left/right edge spans the Width, so they're rotated by the same
+    // `bearing` as the shape itself (via rotatePoint), same as the wall
+    // compass labels, just at a slightly larger offset so the two don't
+    // overlap.
+    let dimLabels;
+    if (isRound) {
+      dimLabels = `<text x="${cx}" y="${cy + w / 2 + 26}" text-anchor="middle" class="chart-tick" font-size="10">⌀ ${(geom.L || geom.diameter).toFixed(1)} m</text>`;
+    } else {
+      // Placed at diagonal corners (both dx and dy nonzero), not along the
+      // same cardinal axis as the compass letters (which always sit at
+      // dx=0 or dy=0) — so the two never land on the same screen row or
+      // column and clip into each other, regardless of bearing.
+      const lenP = rotatePoint(w / 2 + labelOffset, -h / 2 - labelOffset, bearing);
+      const widP = rotatePoint(w / 2 + labelOffset, h / 2 + labelOffset, bearing);
+      dimLabels = `
+        <text x="${cx + lenP.x}" y="${cy + lenP.y + 3}" text-anchor="middle" class="chart-tick" font-size="9.5">${isLShape ? "Wing A " : "L "}${(isLShape ? design.lengthA || 4 : geom.L).toFixed(1)} m</text>
+        <text x="${cx + widP.x}" y="${cy + widP.y + 3}" text-anchor="middle" class="chart-tick" font-size="9.5">W ${(isLShape ? design.widthA || 4 : geom.W || geom.L).toFixed(1)} m</text>`;
+    }
+
+    const doorArea = (design.doors || []).reduce((s, d) => s + (d.areaEach || 0) * (d.count || 0), 0);
+    const scaleBarPx = scale; // px per metre, already computed above
+    const extraH = isLShape ? 16 : 0; // room for the extra Wing B annotation line
+    const winLineY = size + 12 + extraH;
+    const scaleLineY = size + 22 + extraH;
+
     container.innerHTML = `
-      <svg viewBox="0 0 ${size} ${size}" style="width:260px;height:260px;">
+      <svg viewBox="0 0 ${size} ${size + 24 + extraH}" style="width:100%;max-width:300px;height:auto;display:block;margin:0 auto;">
         <g transform="rotate(${bearing} ${cx} ${cy})">
           ${shapeSvg}
-          ${winMark}
+          ${winMarks}
         </g>
+        ${wallLabels}
+        ${dimLabels}
         <text x="${cx}" y="14" text-anchor="middle" class="chart-tick" font-size="11">N ↑</text>
         <text x="${cx}" y="${size - 6}" text-anchor="middle" class="chart-tick" font-size="10">Top-down schematic — illustrative</text>
+        ${isLShape ? `<text x="${cx}" y="${size + 12}" text-anchor="middle" class="chart-tick" font-size="9.5">Wing B: ${(design.lengthB || 3).toFixed(1)}×${(design.widthB || 3).toFixed(1)} m</text>` : ""}
+        <text x="${cx}" y="${winLineY}" text-anchor="middle" class="chart-tick" font-size="9.5">${winCount ? winCount + " window" + (winCount > 1 ? "s" : "") + " on " + compassLabel(bearing + winEdgeAngle) + " face" : "No windows configured"}${doorArea ? " · Door " + doorArea.toFixed(1) + " m² (face not modeled)" : ""}</text>
+        <line x1="${size - 10 - scaleBarPx}" y1="${scaleLineY}" x2="${size - 10}" y2="${scaleLineY}" class="chart-axis"/>
+        <text x="${size - 10 - scaleBarPx / 2}" y="${scaleLineY - 1}" text-anchor="middle" class="chart-tick" font-size="8.5">1 m</text>
       </svg>`;
   }
 
@@ -278,11 +536,11 @@ window.UI = window.UI || {};
             <div class="form-inline">
               <div class="form-row"><label>Shape</label>
                 <select id="dShape">
-                  ${["RECTANGULAR","SQUARE","CIRCULAR","DOME","SEMI_CIRCULAR","CUSTOM"].map(v => `<option value="${v}" ${d.shape===v?"selected":""}>${v.replace("_"," ")}</option>`).join("")}
+                  ${["RECTANGULAR","SQUARE","CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE","CUSTOM"].map(v => `<option value="${v}" ${d.shape===v?"selected":""}>${v.replace("_"," ")}</option>`).join("")}
                 </select>
               </div>
             </div>
-            <div class="form-inline" id="rectFields" style="${["CIRCULAR","DOME","SEMI_CIRCULAR"].includes(d.shape)?"display:none;":""}">
+            <div class="form-inline" id="rectFields" style="${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape)?"display:none;":""}">
               <div class="form-row"><label>Length (m)</label><input id="dLength" type="number" step="0.1" value="${d.length}"></div>
               <div class="form-row"><label>Width (m)</label><input id="dWidth" type="number" step="0.1" value="${d.width}"></div>
               <div class="form-row"><label>Height (m)</label><input id="dHeight" type="number" step="0.1" value="${d.height}"></div>
@@ -291,6 +549,14 @@ window.UI = window.UI || {};
               <div class="form-row"><label>Diameter (m)</label><input id="dDiameter" type="number" step="0.1" value="${d.diameter || 5}"></div>
               <div class="form-row"><label>Height (m)</label><input id="dHeight2" type="number" step="0.1" value="${d.height}"></div>
             </div>
+            <div class="form-inline" id="lshapeFields" style="${d.shape === "L_SHAPE" ? "" : "display:none;"}">
+              <div class="form-row"><label>Wing A length (m)</label><input id="dLengthA" type="number" step="0.1" value="${d.lengthA || 4}"></div>
+              <div class="form-row"><label>Wing A width (m)</label><input id="dWidthA" type="number" step="0.1" value="${d.widthA || 4}"></div>
+              <div class="form-row"><label>Wing B length (m)</label><input id="dLengthB" type="number" step="0.1" value="${d.lengthB || 3}"></div>
+              <div class="form-row"><label>Wing B width (m)</label><input id="dWidthB" type="number" step="0.1" value="${d.widthB || 3}"></div>
+              <div class="form-row"><label>Height (m)</label><input id="dHeight3" type="number" step="0.1" value="${d.height}"></div>
+            </div>
+            ${d.shape === "L_SHAPE" ? `<p class="hint">Simplified: modeled as one thermal zone with a single combined wall face, not two independently-coupled zones. Wing B's width must be ≤ Wing A's length.</p>` : ""}
           </fieldset>
           <fieldset>
             <legend>Orientation</legend>
@@ -321,9 +587,12 @@ window.UI = window.UI || {};
           <fieldset>
             <legend>Occupancy &amp; internal gain</legend>
             <div class="form-inline">
-              <div class="form-row"><label>Occupancy (persons)</label><input id="dOccupancy" type="number" value="${d.occupancy}"></div>
-              <div class="form-row"><label>Internal heat gain (W)</label><input id="dInternal" type="number" value="${d.internalHeatGainW}"></div>
+              <div class="form-row"><label>Occupancy (persons)</label><input id="dOccupancy" type="number" min="0" max="50" value="${d.occupancy}"></div>
+              <div class="form-row"><label>Activity level</label>
+                <select id="dOccupancyActivity">${DATA.OCCUPANCY_ACTIVITY_LEVELS.map(a => `<option value="${a.id}" ${(d.occupancyActivity||"RESTING")===a.id?"selected":""}>${a.label} (${a.watts}W/person)</option>`).join("")}</select>
+              </div>
             </div>
+            <p class="hint" id="dInternalGainDisplay">Internal heat gain: <b>${d.occupancy} people × ${DATA.occupancyActivityById(d.occupancyActivity||"RESTING").watts}W = ${d.internalHeatGainW}W total</b> — computed automatically, per ASHRAE Fundamentals Ch.9 occupant heat-output figures.</p>
           </fieldset>
           <button class="btn btn-accent" id="saveDesignBtn">Save shelter design</button>
         </div>
@@ -334,13 +603,23 @@ window.UI = window.UI || {};
             <div id="preview2d"></div>
           </div>
           <div class="card" style="margin-top:16px;">
+            <h3>3D Preview <span class="tag tag-demo">illustrative — box approximation</span></h3>
+            <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:8px; cursor:grab;"></canvas>
+            <p class="hint" id="shelter3dStatus" hidden></p>
+            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). ${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape) ? "Shown as a bounding box — this view doesn't yet model curved or L-shaped footprints." : ""}</p>
+          </div>
+          <div class="card" style="margin-top:16px;">
             <h3>Derived Geometry <span class="tag tag-model">calculated</span></h3>
             <div class="grid grid-2">
-              <div class="metric-card"><div class="metric-label">Floor Area</div><div class="metric-value" style="font-size:18px;">${geom.floorArea.toFixed(1)} m²</div></div>
-              <div class="metric-card"><div class="metric-label">Volume</div><div class="metric-value" style="font-size:18px;">${geom.volume.toFixed(1)} m³</div></div>
-              <div class="metric-card"><div class="metric-label">Wall Area</div><div class="metric-value" style="font-size:18px;">${geom.wallArea.toFixed(1)} m²</div></div>
-              <div class="metric-card"><div class="metric-label">Roof Area</div><div class="metric-value" style="font-size:18px;">${geom.roofArea.toFixed(1)} m²</div></div>
+              <div class="metric-card"><div class="metric-label">Floor Area</div><div class="metric-value" id="geomFloorArea" style="font-size:18px;">${geom.floorArea.toFixed(1)} m²</div></div>
+              <div class="metric-card"><div class="metric-label">Volume</div><div class="metric-value" id="geomVolume" style="font-size:18px;">${geom.volume.toFixed(1)} m³</div></div>
+              <div class="metric-card"><div class="metric-label">Wall Area</div><div class="metric-value" id="geomWallArea" style="font-size:18px;">${geom.wallArea.toFixed(1)} m²</div></div>
+              <div class="metric-card"><div class="metric-label">Roof Area</div><div class="metric-value" id="geomRoofArea" style="font-size:18px;">${geom.roofArea.toFixed(1)} m²</div></div>
             </div>
+          </div>
+          <div class="card" style="margin-top:16px;" id="livePreviewCard">
+            <h3>Live Prediction <span class="tag tag-model">auto-updates</span></h3>
+            <div id="livePreview"><p class="subtitle">Change any parameter above to see a live prediction here.</p></div>
           </div>
         </div>
       </div>
@@ -375,45 +654,206 @@ window.UI = window.UI || {};
 
     drawShelterPreview(U.qs("#preview2d", root), d, geom);
 
+    // 3D preview: box approximation using the shape's overall bounding
+    // dimensions (geom.L / geom.W already cover this for every shape,
+    // including circular/L — see the note rendered above the canvas).
+    // Loaded as an ES module (see index.html's import map), which can
+    // still be mid-fetch the first time this page renders — retried a
+    // few times before giving up gracefully rather than blocking on it.
+    function update3DView(design, g) {
+      if (!currentShelter3D) return;
+      const wallMatId = design.wall && design.wall.materialId;
+      currentShelter3D.update({
+        width: g.L, length: g.W || g.L, height: design.height || 3,
+        doorCount: (design.doors || []).reduce((s, dr) => s + (dr.count || 0), 0),
+        windowCount: (design.windows || []).reduce((s, w) => s + (w.count || 0), 0),
+        wallColor: WALL_COLOR_BY_MATERIAL[wallMatId] || "#dfeef2",
+        sunAngle: ENGINE.frontAzimuthOf(design)
+      });
+    }
+    (function tryInit3D(attemptsLeft) {
+      const canvas = U.qs("#shelter3dCanvas", root);
+      if (!canvas) return; // navigated away before this fired
+      if (window.AreaTherm3D && window.AreaTherm3D.Shelter3D) {
+        try {
+          if (currentShelter3D) currentShelter3D.dispose();
+          currentShelter3D = new window.AreaTherm3D.Shelter3D(canvas);
+          update3DView(d, geom);
+        } catch (e) {
+          window.APP.logError("shelter3d-init", e);
+          const status = U.qs("#shelter3dStatus", root);
+          status.hidden = false; status.textContent = "3D preview failed to start.";
+        }
+      } else if (attemptsLeft > 0) {
+        setTimeout(() => tryInit3D(attemptsLeft - 1), 300);
+      } else {
+        const status = U.qs("#shelter3dStatus", root);
+        status.hidden = false;
+        status.textContent = "3D preview unavailable — couldn't load Three.js (check your internet connection).";
+      }
+    })(10);
+
     U.on("#dShape", "change", () => {
       const v = U.qs("#dShape", root).value;
-      U.qs("#rectFields", root).style.display = ["CIRCULAR","DOME","SEMI_CIRCULAR"].includes(v) ? "none" : "";
-      U.qs("#roundFields", root).style.display = ["CIRCULAR","DOME","SEMI_CIRCULAR"].includes(v) ? "" : "none";
+      const isRoundV = ["CIRCULAR","DOME","SEMI_CIRCULAR"].includes(v);
+      const isLShapeV = v === "L_SHAPE";
+      U.qs("#rectFields", root).style.display = (isRoundV || isLShapeV) ? "none" : "";
+      U.qs("#roundFields", root).style.display = isRoundV ? "" : "none";
+      U.qs("#lshapeFields", root).style.display = isLShapeV ? "" : "none";
     }, root);
     U.on("#dOrientation", "change", () => {
       U.qs("#azimuthRow", root).style.display = U.qs("#dOrientation", root).value === "CUSTOM" ? "" : "none";
     }, root);
 
-    U.on("#saveDesignBtn", "click", () => {
+    const recomputeInternalGain = () => {
+      const occ = parseInt(U.qs("#dOccupancy", root).value) || 0;
+      const activityId = U.qs("#dOccupancyActivity", root).value;
+      const watts = DATA.occupancyHeatWatts(occ, activityId);
+      U.qs("#dInternalGainDisplay", root).innerHTML =
+        `Internal heat gain: <b>${occ} people × ${DATA.occupancyActivityById(activityId).watts}W = ${watts}W total</b> — computed automatically, per ASHRAE Fundamentals Ch.9 occupant heat-output figures.`;
+    };
+    U.on("#dOccupancy", "input", recomputeInternalGain, root);
+    U.on("#dOccupancyActivity", "change", recomputeInternalGain, root);
+
+    // Reads every field on this page (geometry, orientation, openings,
+    // occupancy, wall/roof/floor/mass construction) into one design object —
+    // shared by both Save buttons and the live-prediction auto-recompute
+    // below, so there's exactly one place that knows how to read this form.
+    function readDesignFromForm() {
       const shape = U.qs("#dShape", root).value;
-      const patch = {
+      const isRoundShape = ["CIRCULAR", "DOME", "SEMI_CIRCULAR"].includes(shape);
+      const isLShapeShape = shape === "L_SHAPE";
+      // Height lives in a different field per shape group (only one of
+      // which is visible at a time) — read the one that actually matches
+      // the current selection, not just whichever field happens to exist
+      // first in the DOM.
+      const heightFieldId = isLShapeShape ? "#dHeight3" : isRoundShape ? "#dHeight2" : "#dHeight";
+      const occupancy = parseInt(U.qs("#dOccupancy", root).value) || 0;
+      const occupancyActivity = U.qs("#dOccupancyActivity", root).value;
+      const draft = {
+        ...d,
         shape,
         length: parseFloat(U.qs("#dLength", root).value) || d.length,
         width: parseFloat(U.qs("#dWidth", root).value) || d.width,
-        height: parseFloat((U.qs("#dHeight", root)||U.qs("#dHeight2",root)).value) || d.height,
+        height: parseFloat(U.qs(heightFieldId, root).value) || d.height,
         diameter: parseFloat(U.qs("#dDiameter", root) ? U.qs("#dDiameter", root).value : d.diameter) || d.diameter,
+        lengthA: parseFloat(U.qs("#dLengthA", root).value) || d.lengthA || 4,
+        widthA: parseFloat(U.qs("#dWidthA", root).value) || d.widthA || 4,
+        lengthB: parseFloat(U.qs("#dLengthB", root).value) || d.lengthB || 3,
+        widthB: parseFloat(U.qs("#dWidthB", root).value) || d.widthB || 3,
         orientation: U.qs("#dOrientation", root).value,
         azimuthDeg: parseFloat(U.qs("#dAzimuth", root).value) || 0,
-        airLeakageAch: parseFloat(U.qs("#dAch", root).value),
-        occupancy: parseInt(U.qs("#dOccupancy", root).value) || 0,
-        internalHeatGainW: parseFloat(U.qs("#dInternal", root).value) || 0,
-        windows: [{ areaEach: parseFloat(U.qs("#dWinArea", root).value), count: parseInt(U.qs("#dWinCount", root).value), orientation: U.qs("#dWinOrient", root).value, glazingMaterialId: U.qs("#dGlazing", root).value }],
-        doors: [{ areaEach: parseFloat(U.qs("#dDoorArea", root).value), count: 1 }]
+        airLeakageAch: U.numOr(U.qs("#dAch", root).value, d.airLeakageAch),
+        occupancy, occupancyActivity,
+        internalHeatGainW: DATA.occupancyHeatWatts(occupancy, occupancyActivity),
+        windows: [{
+          areaEach: parseFloat(U.qs("#dWinArea", root).value) || d.windows[0].areaEach,
+          count: parseInt(U.qs("#dWinCount", root).value) || d.windows[0].count,
+          orientation: U.qs("#dWinOrient", root).value, glazingMaterialId: U.qs("#dGlazing", root).value
+        }],
+        doors: [{ areaEach: parseFloat(U.qs("#dDoorArea", root).value) || d.doors[0].areaEach, count: 1 }],
+        wall: {
+          materialId: U.qs("#dWallMat", root).value,
+          thicknessMm: parseFloat(U.qs("#dWallThick", root).value) || d.wall.thicknessMm,
+          insulationMaterialId: U.qs("#dWallInsMat", root).value,
+          insulationThicknessMm: U.numOr(U.qs("#dWallInsThick", root).value, d.wall.insulationThicknessMm)
+        },
+        roof: {
+          materialId: U.qs("#dRoofMat", root).value,
+          thicknessMm: parseFloat(U.qs("#dRoofThick", root).value) || d.roof.thicknessMm,
+          insulationMaterialId: U.qs("#dRoofInsMat", root).value,
+          insulationThicknessMm: U.numOr(U.qs("#dRoofInsThick", root).value, d.roof.insulationThicknessMm)
+        },
+        floor: { materialId: U.qs("#dFloorMat", root).value, thicknessMm: 100 }
       };
-      STORE.updateDesign(patch);
+      const massMatId = U.qs("#dMassMat", root).value;
+      const massKg = parseFloat(U.qs("#dMassKg", root).value) || 0;
+      if (massMatId && massKg > 0) {
+        let floorArea = geom.floorArea;
+        try { floorArea = ENGINE.computeGeometry(draft).floorArea; } catch (e) { /* mid-edit, keep last-known geometry */ }
+        draft.thermalMass = { materialId: massMatId, massKg, surfaceAreaM2: Math.min(floorArea, massKg / 300) };
+      } else {
+        draft.thermalMass = null;
+      }
+      return draft;
+    }
+
+    function renderLivePreview(el, result) {
+      el.innerHTML = `
+        <div class="grid grid-2">
+          <div class="metric-card"><div class="metric-label">Predicted Indoor Temp</div><div class="metric-value" style="font-size:16px;">${result.comfort.minIndoor}–${result.comfort.maxIndoor}°C</div></div>
+          <div class="metric-card"><div class="metric-label">Comfort Score</div><div class="metric-value" style="font-size:16px;">${result.scores.thermalComfortScore}/100</div></div>
+          <div class="metric-card"><div class="metric-label">Comfort Duration</div><div class="metric-value" style="font-size:16px;">${result.comfort.comfortHoursPerDay} h/day</div></div>
+          <div class="metric-card"><div class="metric-label">Net Energy</div><div class="metric-value" style="font-size:16px;">${result.daily.netKwh} kWh/day</div></div>
+        </div>
+        <p class="hint" style="margin-top:8px;">Updates automatically as you edit the design — visit Thermal Simulation for the full hourly breakdown.</p>`;
+    }
+
+    // Live prediction: recomputes on any field change (800ms debounce, so
+    // typing doesn't trigger 60 recalcs/sec) and immediately on blur, so
+    // leaving a field never leaves a stale preview. Only updates the small
+    // #livePreview panel in place — never a full page re-render — so focus
+    // and cursor position in whatever field you're editing are preserved.
+    // This does NOT record a simulation-history entry; only the explicit
+    // "Run Simulation" actions elsewhere do that.
+    function liveRecompute() {
+      const previewEl = U.qs("#livePreview", root);
+      if (!previewEl) return;
+      const draft = readDesignFromForm();
+
+      // Geometry + 2D preview update whenever dimensions are computable,
+      // independent of whether a climate is loaded or the full design
+      // validates — this is what keeps "Derived Geometry" from going
+      // stale while you're still typing.
+      try {
+        const liveGeom = ENGINE.computeGeometry(draft);
+        const sane = [liveGeom.floorArea, liveGeom.volume, liveGeom.wallArea, liveGeom.roofArea]
+          .every(v => Number.isFinite(v) && v > 0);
+        if (sane) {
+          U.qs("#geomFloorArea", root).textContent = liveGeom.floorArea.toFixed(1) + " m²";
+          U.qs("#geomVolume", root).textContent = liveGeom.volume.toFixed(1) + " m³";
+          U.qs("#geomWallArea", root).textContent = liveGeom.wallArea.toFixed(1) + " m²";
+          U.qs("#geomRoofArea", root).textContent = liveGeom.roofArea.toFixed(1) + " m²";
+          drawShelterPreview(U.qs("#preview2d", root), draft, liveGeom);
+          update3DView(draft, liveGeom);
+        }
+      } catch (e) { /* dimensions mid-edit / not yet valid — leave last-good geometry on screen */ }
+
+      const season = STORE.currentSeason();
+      if (!season) {
+        previewEl.innerHTML = `<p class="subtitle">Load a location &amp; climate to see a live prediction here.</p>`;
+        return;
+      }
+      const check = window.APP_VALIDATOR.validateDesign({ ...STORE.get(), design: draft });
+      if (!check.valid) {
+        previewEl.innerHTML = `<p class="hint" style="color:var(--bad);">Fix inputs to see a live prediction — ${U.esc(check.errors[0].message)}</p>`;
+        return;
+      }
+      STORE.updateDesign(draft);
+      try {
+        const result = ENGINE.runSimulation(draft, season, STORE.get().simConfig);
+        renderLivePreview(previewEl, result);
+      } catch (e) {
+        window.APP.logError("liveRecompute", e);
+        previewEl.innerHTML = `<p class="hint">Live prediction unavailable for the current inputs.</p>`;
+      }
+    }
+    const debouncedRecompute = U.debounce(liveRecompute, 800);
+    root.addEventListener("input", debouncedRecompute);
+    root.addEventListener("change", debouncedRecompute);
+    root.addEventListener("blur", (e) => {
+      if (/^(INPUT|SELECT)$/.test(e.target.tagName)) debouncedRecompute.flush();
+    }, true);
+    liveRecompute();
+
+    U.on("#saveDesignBtn", "click", () => {
+      STORE.updateDesign(readDesignFromForm());
       window.APP.render();
       window.APP.toast("Shelter design saved.");
     }, root);
 
     U.on("#saveMaterialsBtn", "click", () => {
-      const massMatId = U.qs("#dMassMat", root).value;
-      const massKg = parseFloat(U.qs("#dMassKg", root).value) || 0;
-      STORE.updateDesign({
-        wall: { materialId: U.qs("#dWallMat", root).value, thicknessMm: parseFloat(U.qs("#dWallThick", root).value), insulationMaterialId: U.qs("#dWallInsMat", root).value, insulationThicknessMm: parseFloat(U.qs("#dWallInsThick", root).value) },
-        roof: { materialId: U.qs("#dRoofMat", root).value, thicknessMm: parseFloat(U.qs("#dRoofThick", root).value), insulationMaterialId: U.qs("#dRoofInsMat", root).value, insulationThicknessMm: parseFloat(U.qs("#dRoofInsThick", root).value) },
-        floor: { materialId: U.qs("#dFloorMat", root).value, thicknessMm: 100 },
-        thermalMass: massMatId && massKg > 0 ? { materialId: massMatId, massKg, surfaceAreaM2: Math.min(geom.floorArea, massKg / 300) } : null
-      });
+      STORE.updateDesign(readDesignFromForm());
       window.APP.render();
       window.APP.toast("Construction saved.");
     }, root);
@@ -647,31 +1087,39 @@ window.UI = window.UI || {};
 
   function renderGuidedComfort(root, s) {
     const c = s.design.comfort;
+    const baseMin = c.baseMin != null ? c.baseMin : c.min;
+    const clothingId = c.clothingLevel || "TYPICAL";
+    const activityId = c.activityLevel || "SEATED";
     root.innerHTML = `
       <h1>Guided Setup</h1>
       ${guidedStepBar(4)}
       <div class="card">
-        <h3>Step 4 — Set Comfort Range</h3>
-        <div class="form-row" style="max-width:340px;"><label>What is this shelter for?</label>
-          <select id="gComfortProfile">${DATA.COMFORT_PROFILES.map(p => `<option value="${p.id}" ${c.profileId===p.id?"selected":""}>${p.label}</option>`).join("")}</select>
-        </div>
+        <h3>Step 4 — Human Comfort Requirement</h3>
+        <p class="subtitle">This prototype models thermal comfort for human occupants.</p>
         <div class="form-inline">
-          <div class="form-row"><label>Min comfortable temp (°C)</label><input id="gMin" type="number" value="${c.min}"></div>
+          <div class="form-row"><label>Min comfortable temp (°C)</label><input id="gMin" type="number" value="${baseMin}"></div>
           <div class="form-row"><label>Max comfortable temp (°C)</label><input id="gMax" type="number" value="${c.max}"></div>
         </div>
+        <div class="form-inline">
+          <div class="form-row"><label>Clothing level</label>
+            <select id="gClothing">${DATA.CLOTHING_LEVELS.map(cl => `<option value="${cl.id}" ${clothingId === cl.id ? "selected" : ""}>${cl.label} (${cl.clo} clo)</option>`).join("")}</select>
+          </div>
+          <div class="form-row"><label>Activity level</label>
+            <select id="gActivity">${DATA.ACTIVITY_LEVELS.map(a => `<option value="${a.id}" ${activityId === a.id ? "selected" : ""}>${a.label} (${a.met} met)</option>`).join("")}</select>
+          </div>
+        </div>
+        <p class="hint">Clothing and activity shift the minimum comfortable temperature — heavier clothing or more activity means occupants stay comfortable at a lower indoor temperature.</p>
       </div>
       ${guidedNav(root, true, "Continue to Run →")}`;
 
-    U.on("#gComfortProfile", "change", () => {
-      const p = DATA.COMFORT_PROFILES.find(x => x.id === U.qs("#gComfortProfile", root).value);
-      if (p) { U.qs("#gMin", root).value = p.min; U.qs("#gMax", root).value = p.max; }
-    }, root);
-
     wireGuidedNav(root, () => {
+      const baseMinVal = parseFloat(U.qs("#gMin", root).value);
+      const maxVal = parseFloat(U.qs("#gMax", root).value);
+      const clothingLevel = U.qs("#gClothing", root).value;
+      const activityLevel = U.qs("#gActivity", root).value;
       STORE.updateDesign({ comfort: {
-        profileId: U.qs("#gComfortProfile", root).value,
-        min: parseFloat(U.qs("#gMin", root).value),
-        max: parseFloat(U.qs("#gMax", root).value)
+        profileId: "human", baseMin: baseMinVal, max: maxVal, clothingLevel, activityLevel,
+        min: DATA.effectiveComfortMin(baseMinVal, clothingLevel, activityLevel, maxVal)
       } });
       guidedStep = 5; window.APP.render();
     });
@@ -693,11 +1141,19 @@ window.UI = window.UI || {};
         <button class="btn btn-accent" id="gRunBtn" style="margin-top:16px;font-size:14px;padding:12px 24px;" ${season ? "" : "disabled"}>▶ Run Simulation</button>
         ${!season ? `<p class="hint">Go back to Step 1 and load a climate profile first.</p>` : ""}
         <div id="gRunStatus" class="hint" style="margin-top:8px;"></div>
+        <div id="gValidationErrors" hidden></div>
       </div>
       <div class="wizard-nav"><button class="btn" id="guidedBack">← Back</button><span></span></div>`;
 
     U.on("#guidedBack", "click", () => { guidedStep = 4; window.APP.render(); }, root);
     U.on("#gRunBtn", "click", () => {
+      const check = window.APP_VALIDATOR.validateDesign(s);
+      if (!check.valid) {
+        U.showValidationErrors(root, "#gValidationErrors", check.errors);
+        window.APP.toast("Fix the highlighted design values before running.");
+        return;
+      }
+      U.showValidationErrors(root, "#gValidationErrors", []);
       const btn = U.qs("#gRunBtn", root);
       btn.disabled = true;
       U.qs("#gRunStatus", root).textContent = "Running thermal simulation and design optimization…";

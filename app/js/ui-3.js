@@ -111,9 +111,13 @@ window.UI = window.UI || {};
     const simId = "SIM-" + now.getTime();
 
     root.innerHTML = `
-      <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+      <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div><b>Engineering Report</b> — printable / exportable to PDF via your browser's print dialog.</div>
-        <button class="btn btn-accent" id="printBtn">🖨 Print / Save as PDF</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn" id="climateCardBtn">📄 Climate Profile Card</button>
+          <button class="btn" id="materialCompBtn">📄 Material Comparison Sheet</button>
+          <button class="btn btn-accent" id="printBtn">🖨 Print / Save as PDF</button>
+        </div>
       </div>
       <div class="card" id="reportDoc" style="line-height:1.7;">
         <h1 style="text-align:center;">Area-Specific Passive Shelter Thermal Performance &amp; Design Optimization Report</h1>
@@ -198,6 +202,139 @@ window.UI = window.UI || {};
       </div>`;
 
     U.on("#printBtn", "click", () => window.print(), root);
+    U.on("#climateCardBtn", "click", () => window.APP.navigate("climate-card"), root);
+    U.on("#materialCompBtn", "click", () => window.APP.navigate("material-comparison"), root);
+  };
+
+  // ---------------------------------------------------------------------
+  // Standalone one-page Climate Profile — same browser print-to-PDF
+  // pattern as the main report, so no new dependency is needed.
+  UI.renderClimateCard = function (root) {
+    const s = STORE.get();
+    const loc = s.location;
+    const season = STORE.currentSeason();
+    if (!loc || !season) {
+      root.innerHTML = `<h1>Climate Profile Card</h1><div class="card"><p class="subtitle">No climate profile loaded yet. Go to <a href="#/location" style="color:var(--accent);font-weight:600;">Location &amp; Climate</a> and load a location first.</p></div>`;
+      return;
+    }
+    const zone = U.classifyClimate(loc, season);
+    const recs = U.climateRecommendations(loc, season);
+    const sd = loc.solarDataSource;
+
+    root.innerHTML = `
+      <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+        <div><b>Climate Profile Card</b> — one-page printable summary for ${U.esc(loc.label)}.</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn" id="ccBackBtn">← Back to Reports</button>
+          <button class="btn btn-accent" id="ccPrintBtn">🖨 Print / Save as PDF</button>
+        </div>
+      </div>
+      <div class="card" id="climateCardDoc" style="line-height:1.7;">
+        <h1 style="text-align:center;">Climate Profile — ${U.esc(loc.label)}</h1>
+        <p style="text-align:center;color:var(--text-muted);">Generated: ${new Date().toLocaleString()} · Data: ${sd ? "NASA POWER + Open-Meteo (live)" : "Open-Meteo (live)"}</p>
+        <hr/>
+        <table>
+          <tr><td>Location</td><td class="num">${U.esc(loc.label)} (${U.esc(loc.state)})</td></tr>
+          <tr><td>Coordinates</td><td class="num">${loc.latitude.toFixed(3)}, ${loc.longitude.toFixed(3)}</td></tr>
+          <tr><td>Elevation</td><td class="num">${loc.elevationM != null ? loc.elevationM + " m" : "—"}</td></tr>
+          <tr><td>Climate zone</td><td class="num">${U.esc(zone || "—")}</td></tr>
+        </table>
+
+        <h3 style="margin-top:16px;">Temperature &amp; Solar</h3>
+        <table>
+          <tr><td>Ambient temperature (loaded season)</td><td class="num">${season.tMin} to ${season.tMax} °C</td></tr>
+          <tr><td>Solar irradiance (loaded season)</td><td class="num">${season.solarKwhDay} kWh/m²/day</td></tr>
+          ${loc.annualSolarKwhM2Yr ? `<tr><td>Annual solar potential</td><td class="num">${loc.annualSolarKwhM2Yr} kWh/m²/yr${sd ? " (NASA POWER, " + U.esc(sd.period) + ")" : " (extrapolated)"}</td></tr>` : ""}
+          ${sd && sd.monthlyTemp ? (() => {
+            const hottest = sd.monthlyTemp.reduce((a, b) => (b.tempC > a.tempC ? b : a));
+            const coldest = sd.monthlyTemp.reduce((a, b) => (b.tempC < a.tempC ? b : a));
+            const sunniest = sd.monthlyGhi.reduce((a, b) => (b.kwhM2Day > a.kwhM2Day ? b : a));
+            return `<tr><td>Hottest / coldest month</td><td class="num">${hottest.month} (${hottest.tempC.toFixed(1)}°C) / ${coldest.month} (${coldest.tempC.toFixed(1)}°C)</td></tr>
+                    <tr><td>Best month for solar heating</td><td class="num">${sunniest.month} (${sunniest.kwhM2Day.toFixed(2)} kWh/m²/day)</td></tr>`;
+          })() : ""}
+        </table>
+
+        <h3 style="margin-top:16px;">Humidity, Wind &amp; Season Notes</h3>
+        <p>Relative humidity: <b>${season.rhPct}%</b> · Wind: <b>${season.windMs} m/s</b> · Cloud cover: <b>${season.cloudPct}%</b>.
+        ${season.rhPct > 70 ? "High humidity — ventilation and moisture management matter more than sealing here." : "Humidity is moderate — not a primary design driver."}</p>
+
+        ${sd && sd.monthlyTemp ? `<h3 style="margin-top:16px;">Monthly Temperature</h3><div id="ccMonthlyTemp"></div>` : ""}
+
+        <h3 style="margin-top:16px;">Design Implications Summary</h3>
+        <ul>${recs.map(r => `<li><b>${U.esc(r.text)}</b> — ${U.esc(r.reason)}</li>`).join("") || "<li>No strong climate driver identified — balanced design suits this location.</li>"}</ul>
+      </div>`;
+
+    if (sd && sd.monthlyTemp) {
+      CH.monthlyBarChart(U.qs("#ccMonthlyTemp", root),
+        sd.monthlyTemp.map(m => ({ label: m.month, mean: m.tempC, min: m.tempMinC, max: m.tempMaxC })),
+        { height: 200, yLabel: "°C" });
+    }
+    U.on("#ccPrintBtn", "click", () => window.print(), root);
+    U.on("#ccBackBtn", "click", () => window.APP.navigate("reports"), root);
+  };
+
+  // ---------------------------------------------------------------------
+  // Standalone one-page Material Comparison sheet for the currently
+  // selected design's materials, plus a CSV export (no library needed —
+  // a plain Blob download).
+  UI.renderMaterialComparison = function (root) {
+    const s = STORE.get();
+    const d = s.design;
+    const rows = [
+      { role: "Wall", mat: DATA.materialById(d.wall.materialId), thicknessMm: d.wall.thicknessMm },
+      { role: "Wall insulation", mat: DATA.materialById(d.wall.insulationMaterialId), thicknessMm: d.wall.insulationThicknessMm },
+      { role: "Roof", mat: DATA.materialById(d.roof.materialId), thicknessMm: d.roof.thicknessMm },
+      { role: "Roof insulation", mat: DATA.materialById(d.roof.insulationMaterialId), thicknessMm: d.roof.insulationThicknessMm },
+      { role: "Floor", mat: DATA.materialById(d.floor.materialId), thicknessMm: d.floor.thicknessMm },
+      { role: "Glazing", mat: DATA.materialById(d.windows[0].glazingMaterialId), thicknessMm: null },
+      { role: "Thermal mass", mat: d.thermalMass ? DATA.materialById(d.thermalMass.materialId) : null, thicknessMm: null }
+    ].filter(r => r.mat);
+
+    root.innerHTML = `
+      <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div><b>Material Comparison Sheet</b> — the materials currently selected for <b>${U.esc(s.project.name)}</b>.</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn" id="mcBackBtn">← Back to Reports</button>
+          <button class="btn" id="mcExportBtn">⬇ Export CSV</button>
+          <button class="btn btn-accent" id="mcPrintBtn">🖨 Print / Save as PDF</button>
+        </div>
+      </div>
+      <div class="card" id="materialCompDoc" style="line-height:1.7;">
+        <h1 style="text-align:center;">Material Comparison — ${U.esc(s.project.name)}</h1>
+        <p style="text-align:center;color:var(--text-muted);">Generated: ${new Date().toLocaleString()}</p>
+        <hr/>
+        <table>
+          <tr><th>Role</th><th>Material</th><th>Thickness</th><th>Property Values</th><th>Cost</th><th>Sustainability</th></tr>
+          ${rows.map(r => `<tr>
+            <td>${r.role}</td>
+            <td>${U.esc(r.mat.name)}${r.mat.isCustom ? ' <span class="tag tag-field">user-provided</span>' : ""}</td>
+            <td class="num">${r.thicknessMm != null ? r.thicknessMm + " mm" : "—"}</td>
+            <td class="num">${r.mat.uValue != null ? "U=" + r.mat.uValue + ", SHGC=" + r.mat.shgc : (r.mat.k != null ? "k=" + r.mat.k + " W/mK, ρ=" + (r.mat.density ?? "—") + " kg/m³" : "—")}</td>
+            <td class="num">${r.mat.costPerKg != null && r.role === "Thermal mass" ? "₹" + r.mat.costPerKg + "/kg" : (r.mat.costPerM2 != null ? "₹" + r.mat.costPerM2 + "/m²" : "—")}</td>
+            <td>${U.esc(r.mat.sustainability || "—")}</td>
+          </tr>`).join("")}
+        </table>
+        <p class="hint" style="margin-top:10px;">Cost and property values are engineering database reference figures — verify against actual procurement before construction. Values marked "user-provided" are custom materials added via the Materials page, not pre-validated.</p>
+      </div>`;
+
+    U.on("#mcPrintBtn", "click", () => window.print(), root);
+    U.on("#mcBackBtn", "click", () => window.APP.navigate("reports"), root);
+    U.on("#mcExportBtn", "click", () => {
+      const header = ["Role", "Material", "Thickness (mm)", "Property Values", "Cost", "Sustainability"];
+      const csvRows = rows.map(r => [
+        r.role, r.mat.name, r.thicknessMm ?? "",
+        r.mat.uValue != null ? `U=${r.mat.uValue}, SHGC=${r.mat.shgc}` : (r.mat.k != null ? `k=${r.mat.k} W/mK` : ""),
+        r.mat.costPerKg != null && r.role === "Thermal mass" ? `${r.mat.costPerKg}/kg` : (r.mat.costPerM2 != null ? `${r.mat.costPerM2}/m2` : ""),
+        r.mat.sustainability || ""
+      ]);
+      const csv = [header].concat(csvRows).map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "material-comparison.csv";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, root);
   };
 
   // ---------------------------------------------------------------------
@@ -271,6 +408,7 @@ window.UI = window.UI || {};
   // ---------------------------------------------------------------------
   UI.renderSettings = function (root) {
     const s = STORE.get();
+    const projects = STORE.listProjects();
     root.innerHTML = `
       <h1>Settings</h1>
       <div class="grid grid-2">
@@ -278,10 +416,29 @@ window.UI = window.UI || {};
           <h3>Mode</h3>
           <p>Simple Mode hides advanced engineering fields. Advanced Mode exposes full parameter control.
           Toggle in the sidebar.</p>
+          <h3 style="margin-top:16px;">Appearance</h3>
+          <div class="form-inline">
+            <div class="form-row" style="min-width:auto;">
+              <label>Theme</label>
+              <div class="mode-toggle" style="background:var(--bg); border:1px solid var(--border); max-width:220px;">
+                <button class="mode-btn ${s.theme !== "dark" ? "active" : ""}" id="themeLightBtn" style="color:${s.theme !== "dark" ? "#fff" : "var(--text)"};">☀ Light</button>
+                <button class="mode-btn ${s.theme === "dark" ? "active" : ""}" id="themeDarkBtn" style="color:${s.theme === "dark" ? "#fff" : "var(--text)"};">☾ Dark</button>
+              </div>
+            </div>
+          </div>
           <h3 style="margin-top:16px;">Units</h3>
+          <div class="form-inline">
+            <div class="form-row" style="min-width:auto;">
+              <div class="mode-toggle" style="background:var(--bg); border:1px solid var(--border); max-width:220px;">
+                <button class="mode-btn ${s.units !== "IMPERIAL" ? "active" : ""}" id="unitsMetricBtn" style="color:${s.units !== "IMPERIAL" ? "#fff" : "var(--text)"};">Metric</button>
+                <button class="mode-btn ${s.units === "IMPERIAL" ? "active" : ""}" id="unitsImperialBtn" style="color:${s.units === "IMPERIAL" ? "#fff" : "var(--text)"};">Imperial</button>
+              </div>
+            </div>
+          </div>
           <ul class="assumption-list">
-            ${Object.entries(CFG.UNITS).map(([k,v]) => `<li>${k}: <b>${v}</b></li>`).join("")}
+            ${Object.entries(s.units === "IMPERIAL" ? CFG.UNITS_IMPERIAL : CFG.UNITS).map(([k,v]) => `<li>${k}: <b>${v}</b></li>`).join("")}
           </ul>
+          <p class="hint">The simulation engine always computes in metric internally; this list and the figures below are converted for display only. Full unit conversion across every chart and table on other pages is not yet wired up — treat this as the reference conversion, not a site-wide switch yet.</p>
         </div>
         <div class="card">
           <h3>Assumptions &amp; Limitations</h3>
@@ -302,12 +459,65 @@ window.UI = window.UI || {};
         <button class="btn btn-sm" id="saveProjNameBtn">Save name</button>
         <button class="btn btn-sm" id="resetProjectBtn" style="margin-left:8px;color:var(--bad);">Reset project (clears all data)</button>
       </div>
+      <div class="card" style="margin-top:16px;">
+        <h3>Saved Projects</h3>
+        <p class="subtitle">Keep more than one named design and switch between them — the current one auto-saves into its own slot as you work.</p>
+        <div class="form-inline">
+          <div class="form-row" style="flex:2;"><label>New project name</label><input id="newProjName" placeholder="e.g. Kargil winter shelter"></div>
+          <div class="form-row" style="align-self:flex-end;"><button class="btn btn-accent btn-sm" id="newProjectBtn">＋ New Project</button></div>
+        </div>
+        ${projects.length ? `<div class="table-wrap"><table>
+          <tr><th>Name</th><th>Last saved</th><th></th></tr>
+          ${projects.map(p => `<tr class="${p.isCurrent ? "highlight-recommended" : ""}">
+            <td>${U.esc(p.name)}${p.isCurrent ? ' <span class="tag tag-input">current</span>' : ""}</td>
+            <td class="num">${new Date(p.updatedAt).toLocaleString()}</td>
+            <td style="text-align:right;">
+              ${!p.isCurrent ? `<button class="btn btn-sm" data-load-proj="${p.id}">Load</button>` : ""}
+              <button class="btn btn-sm" style="color:var(--bad);margin-left:6px;" data-delete-proj="${p.id}">Delete</button>
+            </td>
+          </tr>`).join("")}
+        </table></div>` : `<p class="hint">No saved projects yet — click "New Project" or save the current one below to start a list.</p>`}
+        <button class="btn btn-sm" id="saveCurrentAsProjectBtn" style="margin-top:10px;">Save current design to this list</button>
+      </div>
     `;
+    U.on("#themeLightBtn", "click", () => { s.theme = "light"; STORE.save(); window.APP.applyTheme(); window.APP.render(); }, root);
+    U.on("#themeDarkBtn", "click", () => { s.theme = "dark"; STORE.save(); window.APP.applyTheme(); window.APP.render(); }, root);
+    U.on("#unitsMetricBtn", "click", () => { s.units = "METRIC"; STORE.save(); window.APP.render(); }, root);
+    U.on("#unitsImperialBtn", "click", () => { s.units = "IMPERIAL"; STORE.save(); window.APP.render(); }, root);
     U.on("#saveProjNameBtn", "click", () => { s.project.name = U.qs("#projNameInput", root).value; STORE.save(); window.APP.render(); }, root);
     U.on("#resetProjectBtn", "click", () => {
       if (confirm("This clears all simulations, designs, and validation data in this browser session. Continue?")) {
         STORE.reset(); window.APP.render();
       }
     }, root);
+    U.on("#newProjectBtn", "click", () => {
+      const name = U.qs("#newProjName", root).value.trim();
+      if (!name) { alert("Enter a name for the new project."); return; }
+      STORE.newProject(name);
+      window.APP.render();
+      window.APP.toast(`New project "${name}" created and set as current.`);
+    }, root);
+    U.on("#saveCurrentAsProjectBtn", "click", () => {
+      STORE.saveAsProject(s.project.name);
+      window.APP.render();
+      window.APP.toast(`"${s.project.name}" saved to your projects list.`);
+    }, root);
+    U.qsa("[data-load-proj]", root).forEach(btn => btn.addEventListener("click", () => {
+      const id = btn.dataset.loadProj;
+      const proj = projects.find(p => p.id === id);
+      if (proj && !confirm(`Switch to "${proj.name}"? Your current design is already saved and won't be lost.`)) return;
+      STORE.loadProject(id);
+      window.APP.applyTheme();
+      window.APP.render();
+      window.APP.toast(`Loaded "${proj ? proj.name : "project"}".`);
+    }));
+    U.qsa("[data-delete-proj]", root).forEach(btn => btn.addEventListener("click", () => {
+      const id = btn.dataset.deleteProj;
+      const proj = projects.find(p => p.id === id);
+      if (!confirm(`Delete the saved project "${proj ? proj.name : ""}"? This only removes it from your saved list — it won't affect your current work.`)) return;
+      STORE.deleteProject(id);
+      window.APP.render();
+      window.APP.toast("Project deleted.");
+    }));
   };
 })();

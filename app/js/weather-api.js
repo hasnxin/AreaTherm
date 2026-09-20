@@ -21,6 +21,13 @@ window.APP_WEATHER = (function () {
       return obj;
     } catch (e) { return null; }
   }
+  // Ignores TTL — last-resort fallback when every live attempt has failed.
+  function readStaleCache(lat, lon) {
+    try {
+      const raw = localStorage.getItem(cacheKey(lat, lon));
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
   function writeCache(lat, lon, data) {
     try { localStorage.setItem(cacheKey(lat, lon), JSON.stringify(data)); } catch (e) { /* storage unavailable */ }
   }
@@ -67,14 +74,20 @@ window.APP_WEATHER = (function () {
       "&hourly=temperature_2m,shortwave_radiation,wind_speed_10m,relative_humidity_2m,cloud_cover" +
       `&timezone=auto&forecast_days=${FORECAST_DAYS}`;
 
-    let resp;
+    let j;
     try {
-      resp = await fetch(url);
+      j = await window.U.fetchJsonWithRetry(url, {
+        timeoutMs: 5000, retries: 2,
+        onRetry: () => { if (window.APP && window.APP.toast) window.APP.toast("Connection slow… retrying Open-Meteo…"); }
+      });
     } catch (e) {
-      throw new Error("Network error reaching Open-Meteo — check your internet connection.");
+      const stale = readStaleCache(lat, lon);
+      if (stale) {
+        if (window.APP && window.APP.toast) window.APP.toast("Connection slow — using cached weather data.");
+        return { ...stale, stale: true };
+      }
+      throw new Error("Could not reach Open-Meteo after retrying — check your internet connection.");
     }
-    if (!resp.ok) throw new Error("Open-Meteo request failed (HTTP " + resp.status + ").");
-    const j = await resp.json();
 
     const hourly = buildTypicalDay(
       j.hourly.time, j.hourly.temperature_2m, j.hourly.shortwave_radiation,
