@@ -15,9 +15,14 @@ This machine had no Java/Maven/Node/npm/Docker installed — only Python. Rather
 than hand over Angular/Spring Boot source that can't be compiled or run here
 ("no superficial UI mockup" is a hard requirement in the brief), **Phase 1 is
 a complete, dependency-free, physics-based prototype in HTML/CSS/vanilla JS**.
-It is not a mockup: the thermal engine is a real two-node RC energy-balance
-simulation, the optimizer evaluates real candidate designs, and every number
-on screen is computed live and re-derivable in the "Explain Calculation" panels.
+It is not a mockup: the thermal engine is a real hourly RC energy-balance
+simulation (with occupant sensible/latent heat and occupancy-linked
+ventilation), the optimizer evaluates 60 real candidate designs, and every
+number on screen is computed live and re-derivable in the "Explain
+Calculation" panels. It is also deliberately **dependency-free at runtime**:
+no CDN-hosted library is required for the app to work, including PDF/CSV
+export — see "Reliability & offline behaviour" below for why that matters
+for a live demo.
 
 `ARCHITECTURE.md`, `DATABASE_SCHEMA.sql`, and `API_SPEC.md` define the target
 production stack (Angular 18 + Spring Boot + MySQL + Redis) and are written so
@@ -39,11 +44,12 @@ browser file-access restrictions.)
 ## Demo
 
 Click **"Run Live Demo"** (top-right, on every screen). This fetches real
-live weather for Leh from Open-Meteo + NASA POWER, runs a 24-hour thermal
+live weather for Leh from Open-Meteo + NASA POWER, runs an hourly thermal
 simulation on a baseline shelter, runs the design optimizer (60 candidate
 configurations), and lands you on **Evaluator Summary** — a 2-3 minute story
 of the problem, the model, and the recommended design. No hand-authored or
-illustrative climate data is used anywhere — every figure is live.
+illustrative climate data is used anywhere — every figure is live (falling
+back to cache, honestly labelled, if the network is briefly unavailable).
 
 To walk the full workflow manually: **Dashboard → Location & Climate → Shelter
 Designer → Materials → Thermal Simulation → Optimization → What-If Analysis →
@@ -53,23 +59,44 @@ Validation → Reports → Evaluator Summary → Settings** (left nav, top to bo
 
 | | |
 |---|---|
-| Thermal physics (sol-air conduction, SHGC solar gain, infiltration, two-node RC thermal mass) | **Real model**, formulas in `ARCHITECTURE.md` §3, reproducible in-app via "Explain Calculation" |
-| Optimization (candidate generation + weighted multi-criteria scoring + sensitivity) | **Real**, not a black box — see `ARCHITECTURE.md` §4 |
-| Hourly weather for any of the 10 reference locations | **Real** — fetched client-side from [Open-Meteo](https://open-meteo.com) (no API key), a 7-day forecast averaged into a typical-day hourly curve, cached 7 days. See `app/js/weather-api.js`. |
-| Annual solar potential ("kWh/m²/yr") + annual mean temperature | **Real** — fetched from [NASA POWER](https://power.larc.nasa.gov)'s 20-year (2001-2020) climatology, not extrapolated. See `app/js/nasa-power.js`. Falls back to a labelled forecast-based extrapolation only if that fetch fails. |
-| Material properties | **Engineering database reference values** — editable, labelled "verify for actual construction" |
+| Thermal physics (sol-air conduction, SHGC solar gain, infiltration, occupancy-linked ventilation, two-node RC thermal mass) | **Real model**, formulas in `ARCHITECTURE.md` §3, reproducible in-app via "Explain Calculation" |
+| Occupant heat (sensible/latent split by activity level) | **Real model**, watt figures order-of-magnitude from ASHRAE Fundamentals Ch. 9 / ISO 8996, split fractions simplified and documented — not a literal reproduction of those tables. See Settings. |
+| Optimization (candidate generation + weighted multi-criteria scoring + sensitivity) | **Real**, not a black box — see `ARCHITECTURE.md` §4. Full 60-candidate table is sortable and CSV-exportable, not just the top 5. |
+| Hourly weather for any of the 10 reference locations, or any custom lat/lon | **Real** — fetched client-side from [Open-Meteo](https://open-meteo.com) (no API key), a 7-day forecast averaged into a typical-day hourly curve, cached 7 days, with a timeout/retry/circuit-breaker reliability layer. See `app/js/weather-api.js`, `app/js/reliability.js`. |
+| Annual solar potential ("kWh/m²/yr"), monthly solar/temperature, annual mean temperature | **Real** — fetched from [NASA POWER](https://power.larc.nasa.gov)'s 20-year (2001-2020) climatology, not extrapolated. See `app/js/nasa-power.js`. Falls back to a labelled forecast-based extrapolation only if that fetch fails. |
+| Elevation | **Real** — fetched from Open-Meteo's Elevation API (SRTM-derived, no key). See `app/js/elevation.js`. |
+| Material properties | **Engineering database reference values** — editable, labelled "verify for actual construction," explicitly **not** sourced from a CPWD/state PWD Schedule of Rates |
 | Validation module error metrics (MAE/RMSE/MAPE/R²) | Real math, run against **user-provided or placeholder** measured rows — no field data exists yet |
-| PDF report | Browser print-to-PDF (production target: server-side rendering) |
+| PDF report | Browser print-to-PDF (works fully offline, no library; production target: server-side rendering) |
+| CSV export (design candidates, material sheet, validation data) | Plain-JS CSV generation, no library — opens directly in Excel/Sheets |
 
 No hand-authored, illustrative, or hardcoded climate dataset ships with this
 app — every location's numbers come from a live fetch. Every screen that
-shows climate-derived numbers displays a data-source badge so it's never
-ambiguous where a number came from.
+shows climate-derived numbers displays a data-source badge, and that badge
+always reflects which reliability tier actually served the number (live /
+cached / stale cache) — never silently shown as live. See Settings →
+"Data Source Transparency" for the full metric-by-metric source table.
+
+## Reliability & offline behaviour
+
+Every external API call (Open-Meteo, NASA POWER, elevation) goes through a
+shared reliability layer (`app/js/reliability.js`): a request timeout, capped
+exponential-backoff retries, a per-source circuit breaker (skips a
+repeatedly-failing source for a cooldown window instead of hammering it), and
+a live → fresh-cache → stale-cache fallback chain. Every simulation input is
+validated before it reaches the physics solver (positive dimensions/
+thickness, valid comfort range, valid coordinates), with a specific on-screen
+message instead of a crash, and a global render-level exception handler shows
+a clean recoverable message instead of a blank page or stack trace. This is
+also why PDF and CSV export use zero external libraries rather than a
+CDN-hosted one (jsPDF/SheetJS/a map tile provider): a live demo on
+unreliable venue wifi should not depend on a CDN being reachable.
 
 ## Two ways to use it
 
 - **Guided Setup** (left nav) — a 5-step wizard (Location → Shelter →
-  Materials → Comfort → Run) with sane presets, aimed at non-engineers.
+  Materials → Comfort & Occupancy → Run) with sane presets, aimed at
+  non-engineers.
 - **Advanced screens** (Location & Climate, Shelter Designer, Materials, …)
   — full parameter control, unchanged from Guided Setup's underlying model.
 
@@ -89,29 +116,46 @@ AreaTherm/
   API_SPEC.md                target REST API for the Spring Boot backend
   app/                       the running prototype (open app/index.html)
     index.html
-    css/styles.css
+    css/styles.css            design system + dark mode
     js/
-      config.js               branding + units + default weights (rename the app here)
-      data.js                 10 reference locations, material library, comfort profiles (no climate data)
-      weather-api.js          Open-Meteo live weather client
-      nasa-power.js           NASA POWER climatology client (real annual solar/temp)
-      engine.js               thermal engine + optimizer + validation stats (pure functions, no DOM)
-      charts.js               dependency-free inline-SVG chart renderer
-      store.js                app state ("database"), field-compatible with DATABASE_SCHEMA.sql
-      util.js, ui-1.js, ui-2.js, ui-3.js, app.js   screens + router
+      config.js               branding + units + default weights + reliability tuning (rename the app here)
+      data.js                 10 reference locations, material library, comfort profiles, occupancy activity levels
+      reliability.js          timeout / retry / circuit breaker / tiered cache, shared by every API client
+      weather-api.js          Open-Meteo live weather client (temp, solar, wind, RH, cloud, precipitation)
+      nasa-power.js           NASA POWER climatology client (GHI/DNI/diffuse solar, temperature, monthly series)
+      elevation.js             Open-Meteo Elevation API client (real elevation, no key)
+      engine.js                thermal engine + occupancy heat model + optimizer + validation stats (pure functions, no DOM)
+      charts.js                dependency-free inline-SVG chart renderer (line/bar/stacked/monthly/scatter/gauge)
+      export.js                dependency-free CSV export
+      store.js                 app state ("database"), field-compatible with DATABASE_SCHEMA.sql
+      util.js, ui-1.js, ui-2.js, ui-3.js, app.js   screens + router + global error handling
 ```
 
 ## Known limitations of this pass
 
-- No authentication/RBAC persistence, no historical/multi-year climatology
-  beyond NASA POWER's solar/temperature figures (ERA5/IMD archive adapters
-  are architected, not wired up), no 3D preview (2D top-down schematic
-  only), no ML surrogate model (no training data exists yet — see
+- No authentication/RBAC persistence, no 3D preview (2D top-down schematic
+  only), no interactive map location picker (manual lat/lon entry instead —
+  see below), no ML surrogate model (no training data exists yet — see
   `ARCHITECTURE.md` §9).
+- **External data sources beyond Open-Meteo/NASA POWER/Open-Meteo Elevation
+  are not wired up**, because they need a registered API key or account this
+  environment cannot obtain on your behalf: ERA5/Copernicus CDS, IMD via
+  data.gov.in, ISRO Bhuvan/OpenTopography (used here only for elevation,
+  which Open-Meteo's free Elevation API already covers), and Solcast. The
+  `ClimateProfile` abstraction is architected so any of these can be added
+  as another adapter without touching the thermal engine.
+- **No interactive map or 3D visualization**: both would need a CDN-hosted
+  library (Leaflet/Three.js) and live map tiles, which conflicts with this
+  app's offline-safety goal for a live demo on venue wifi. Manual lat/lon
+  entry on the Location & Climate screen covers "simulate any location"
+  without that dependency.
+- **No Celsius/Fahrenheit or metres/feet unit toggle** — metric (SI) only;
+  every field is explicitly labelled with its unit instead.
 - Simple/Advanced mode toggle exists in the UI but does not yet gate which
   fields are shown — both modes currently expose the full parameter set.
 - State persists to `localStorage` per browser (not a shared multi-user
-  database) — see `DATABASE_SCHEMA.sql` for the production data model.
+  database, and no multi-project save/load list yet) — see
+  `DATABASE_SCHEMA.sql` for the production data model.
 
 ## Next steps toward the full brief
 
@@ -121,5 +165,7 @@ AreaTherm/
 2. Wire the Angular frontend to that API instead of `store.js`.
 3. Instrument a pilot shelter in Leh/Kargil and feed real readings into the
    Validation module to get an actual MAE/RMSE against the model.
-4. Add ERA5 / IMD archive adapters behind the existing `ClimateProfile`
-   abstraction, for historical climatology beyond NASA POWER's coverage.
+4. Add ERA5 / IMD / Solcast archive adapters behind the existing
+   `ClimateProfile` abstraction once API credentials are available, for a
+   cross-source confidence indicator and historical climatology beyond
+   NASA POWER's coverage.

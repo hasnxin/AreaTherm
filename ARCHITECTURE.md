@@ -195,6 +195,60 @@ Calculation")
 All formulas above are re-printed, with the run's actual numbers substituted
 step by step, in every "Explain Calculation" panel — nothing is a black box.
 
+### 3.9 Occupancy heat model (sensible/latent split + ventilation coupling)
+
+Each occupant's total heat output (`data.js` `ACTIVITY_LEVELS`, watt figures
+order-of-magnitude from ASHRAE Fundamentals Handbook Ch. 9 / ISO 8996) is
+split into a sensible share (heats the indoor-air node) and a latent share
+(reported as an illustrative moisture-generation figure only — this model has
+no humidity/psychrometric state node):
+
+```
+Q_occupant,total   = persons × activity.watts
+Q_occupant,sensible = Q_occupant,total × activity.sensibleFrac   (feeds §3.7's Q_internal)
+Q_occupant,latent   = Q_occupant,total − Q_occupant,sensible      (kg/h moisture, display only)
+```
+
+`sensibleFrac` uses simplified fixed fractions per activity level that
+approximate the general trend in those references (sensible share falls as
+activity rises) — not a literal reproduction of their exact per-temperature
+tables. `Q_internal` in §3.7 is `Q_occupant,sensible + equipment gain` (the
+latter is any other internal gain — a heater, electronics — kept separate).
+
+Ventilation (§3.4) is coupled to occupancy via a documented per-person
+fresh-air allowance, not a fixed constant:
+
+```
+ACH_total = ACH_infiltration (wind-adjusted, §3.4) + ACH_occupancy
+ACH_occupancy = (persons × OCCUPANT_FRESH_AIR_LPS × 3.6) / Volume
+```
+
+`OCCUPANT_FRESH_AIR_LPS` (`config.js`, default 7.5 L/s/person) is an
+order-of-magnitude ventilation guideline, not a specific code-compliance
+calculation. Because `Q_vent` is linear in ACH, the occupancy-linked share of
+ventilation loss is an *exact* partition (`ACH_occupancy / ACH_total × Q_vent`
+at each timestep), not an approximation — so the app can show, side by side,
+the gross sensible heat an occupant adds and the extra ventilation loss their
+presence causes, and label the net effect explicitly rather than leaving a
+comfort-score plateau at high occupancy unexplained.
+
+### 3.10 Reliability layer
+
+`app/js/reliability.js` wraps every external API call (Open-Meteo, NASA
+POWER, the elevation API) with: a request timeout (`AbortController`),
+capped exponential-backoff retries, a per-source circuit breaker (after N
+consecutive failures, skip live attempts for a cooldown window rather than
+retrying immediately), and a tiered cache fallback (live → fresh cache →
+stale cache → a clear error). The data-source badge shown throughout the UI
+always reflects which tier actually served a number — a stale-cache hit is
+never displayed identically to a live fetch. `engine.js` additionally exposes
+`validateDesign()`/`validateCoordinates()`, run before every simulation entry
+point, so a non-positive dimension, an inverted comfort band, or an
+out-of-range coordinate produces a specific on-screen message instead of a
+NaN or a divide-by-zero reaching the RC solver. `app.js` wraps every screen
+render in a try/catch that shows a clean recoverable message instead of a
+blank page or a raw stack trace.
+
 ---
 
 ## 4. Optimization Methodology
@@ -220,6 +274,11 @@ Sensitivity analysis: perturb one parameter at a time from the
 This is a **weighted-sum multi-criteria evaluation over a sampled design
 space** (documented as such — not a black-box "AI recommendation"). Section
 9 covers the optional ML surrogate layer.
+
+The Optimization screen shows both the top 5 (Design A–E, as above) and the
+full evaluated set (`runOptimization()`'s `all` field — all 60 candidates,
+not just the top 5), sortable by any scored column and exportable to CSV —
+so a reviewer can audit the whole search, not just the winner.
 
 ---
 
@@ -251,21 +310,28 @@ material properties, editable orientation-factor table, custom time steps).
 ```
 app/
   index.html            SPA shell + nav (→ Angular AppComponent/routes)
-  css/styles.css        design system (scientific/technical)
-  js/config.js          branding + units + default weights
-  js/data.js            10 reference locations, material library,
-                         comfort profiles      (→ seed data / Flyway)
+  css/styles.css        design system (scientific/technical) + dark mode
+  js/config.js          branding + units + default weights + reliability tuning
+  js/data.js            10 reference locations, material library, comfort
+                         profiles, occupancy activity levels (→ seed data / Flyway)
+  js/reliability.js     timeout/retry/circuit-breaker/tiered cache, shared
+                         by every external API client (→ a resilience/retry
+                         library + @Cacheable in the Spring Boot port)
   js/weather-api.js     Open-Meteo live weather client (→ climate/ adapter)
   js/nasa-power.js      NASA POWER climatology client (→ climate/ adapter)
-  js/engine.js          solar + thermal RC model + optimizer +
-                         validation stats      (→ thermal/, optimization/)
+  js/elevation.js       Open-Meteo Elevation API client (→ climate/ adapter)
+  js/engine.js          solar + thermal RC model + occupancy heat model +
+                         optimizer + validation stats + input validation
+                         (→ thermal/, optimization/)
   js/charts.js          dependency-free inline-SVG chart renderer
                          (→ ECharts config builders)
+  js/export.js          dependency-free CSV export (→ a report/export service)
   js/store.js           entity state + localStorage persistence
                          (→ JPA repositories / REST client)
-  js/ui.js              screen rendering + event wiring
-                         (→ Angular components)
-  js/app.js             router/bootstrap                (→ Angular routing)
+  js/util.js, ui-1.js, ui-2.js, ui-3.js, app.js
+                         shared DOM helpers, screen rendering + event wiring,
+                         router/bootstrap + global error handling
+                         (→ Angular components + routing)
 ```
 
 ---
@@ -276,18 +342,32 @@ Phases 1–11 from the brief are delivered in this pass as a single running
 prototype rather than sequential milestones (feasible because there is no
 build/deploy step to gate on). Validation (Phase 9) and Reports (Phase 10)
 are included. Live weather-API integration is implemented client-side:
-Open-Meteo (`app/js/weather-api.js`) drives the hourly simulation, and
-NASA POWER (`app/js/nasa-power.js`) supplies real 20-year solar/temperature
-climatology, for all 10 reference locations, with a Guided Setup wizard as
-the simplified entry point. No hand-authored or illustrative climate
+Open-Meteo (`app/js/weather-api.js`) drives the hourly simulation, NASA
+POWER (`app/js/nasa-power.js`) supplies real 20-year solar/temperature
+climatology, and Open-Meteo's Elevation API (`app/js/elevation.js`) supplies
+real elevation — for all 10 reference locations *and* any manually-entered
+lat/lon — with a Guided Setup wizard as the simplified entry point. Every
+external call goes through a shared reliability layer (§3.10): timeouts,
+retries, a circuit breaker, and a tiered live/cache/stale-cache fallback,
+so a flaky network degrades gracefully instead of freezing the UI. Occupant
+heat is modelled with a sensible/latent split by activity level, coupled to
+ventilation (§3.9), so higher occupancy shows its real trade-off (more body
+heat, but also more ventilation loss) instead of a hidden constant. The
+Optimization screen exposes the full 60-candidate set, sortable and
+CSV-exportable, not just the top 5. No hand-authored or illustrative climate
 dataset ships with the app. Not implemented (explicitly out of scope for
 this pass, tracked for the production build): real authentication/RBAC
-persistence, ERA5/IMD archive integration (NASA POWER covers solar/temp
-climatology; ERA5/IMD would add other historical variables), 3D preview
-(2D top-down + elevation preview only), server-side PDF rendering (browser
-print-to-PDF is used instead), ML surrogate model (architecture documented
-in §9, not trained — no labelled field data exists yet to train or
-validate one).
+persistence, ERA5/IMD/Solcast archive integration (each needs a registered
+API key this environment cannot obtain — NASA POWER + Open-Meteo cover
+solar/temperature climatology and forecast weather in the meantime), an
+interactive map location picker or 3D preview (both would need a CDN-hosted
+library, which conflicts with the offline-safety goal — 2D top-down +
+manual lat/lon entry are used instead), server-side PDF/XLSX rendering
+(dependency-free browser print-to-PDF and plain-JS CSV are used instead, for
+the same offline-safety reason), a Celsius/Fahrenheit or metric/imperial
+unit toggle, multi-project save/load, ML surrogate model (architecture
+documented in §9, not trained — no labelled field data exists yet to train
+or validate one).
 
 ## 8. Assumptions register (also shown live in-app under Settings)
 
@@ -296,11 +376,21 @@ Outside film coefficient fixed at 23 W/m²K, wind-adjusted by a simple linear
 factor. Sky longwave radiation exchange is not separately modelled (folded
 into the sol-air simplification). Ground temperature defaults to monthly
 mean ambient unless overridden. Internal gains are constant-per-hour unless
-an occupancy schedule is supplied. PCM modelled via elevated apparent
-specific heat over its melt band, not a full enthalpy method. Weather inputs
-are a live Open-Meteo forecast average blended with NASA POWER climatology
-for the annual solar/temperature figures — never claimed as measured or
-field-validated.
+an occupancy schedule is supplied. Occupant heat uses fixed watt figures per
+activity level (ASHRAE Fundamentals Ch. 9 / ISO 8996 order of magnitude)
+split into sensible/latent by simplified fixed fractions, and ventilation
+includes a documented per-person fresh-air allowance on top of wind-adjusted
+infiltration (§3.9) — neither is a specific standard-compliance calculation.
+PCM modelled via elevated apparent specific heat over its melt band, not a
+full enthalpy method. Weather inputs are a live Open-Meteo forecast average
+(with real elevation from Open-Meteo's Elevation API) blended with NASA
+POWER climatology for the annual solar/temperature figures — never claimed
+as measured or field-validated, and a network hiccup falls back to cached
+data, explicitly labelled as cached or stale, never silently shown as live
+(§3.10). The Thermal Comfort Score is a custom, project-defined weighted
+index, not PMV/PPD or any other recognised thermal-comfort standard, and
+material costs are a materials + installation + waste-factor planning
+estimate, not a CPWD/state PWD Schedule of Rates figure.
 
 ## 9. AI/ML Layer (documented, not built)
 

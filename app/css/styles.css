@@ -7,6 +7,15 @@
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
 }
+/* Dark mode: toggled via Settings -> Appearance (sets documentElement's
+   data-theme attribute). Only the light-chrome variables flip — the sidebar
+   is already dark navy in both modes by design. */
+:root[data-theme="dark"]{
+  --bg:#0d1520; --panel:#132132; --border:#233246;
+  --text:#e7edf3; --text-muted:#a9b8c7; --text-faint:#77899c;
+  --accent:#3fc2d8; --accent-bright:#5fd6ea;
+  --good:#3ecb7a; --warn:#e3a542; --bad:#e2645a;
+}
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;height:100%;}
 body{font-family:var(--sans); background:var(--bg); color:var(--text); font-size:14px;}
@@ -79,6 +88,12 @@ h3{font-size:13.5px; margin:0 0 8px; text-transform:uppercase; letter-spacing:.0
 .metric-card .metric-value{font-size:26px; font-weight:700; font-family:var(--mono);}
 .metric-card .metric-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
 
+/* Status callouts (replace ad-hoc inline styles so dark mode can reach them) */
+.callout-warn{background:#fdf0d8; border-color:#f3ddac;}
+.callout-warn h3{color:#8a5a10; margin:0 0 6px; text-transform:none; letter-spacing:normal; font-size:14px;}
+.callout-error{border-color:var(--bad); background:#fdf2f1;}
+.callout-error h3{color:var(--bad); margin:0 0 6px; text-transform:none; letter-spacing:normal; font-size:14px;}
+
 /* Forms */
 .form-row{display:flex; flex-direction:column; gap:5px; margin-bottom:12px;}
 .form-row label{font-size:11.5px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.02em;}
@@ -95,6 +110,8 @@ legend{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing
 table{width:100%; border-collapse:collapse; font-size:12.5px;}
 th,td{padding:8px 10px; border-bottom:1px solid var(--border); text-align:left;}
 th{font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted); background:#f8fafb;}
+th.sortable{cursor:pointer; user-select:none;}
+th.sortable:hover{color:var(--accent);}
 tr.highlight-recommended{background:#e9f8ee;}
 td.num{font-family:var(--mono); text-align:right;}
 .table-wrap{overflow-x:auto;}
@@ -151,11 +168,11 @@ td.num{font-family:var(--mono); text-align:right;}
 /* Modal */
 .modal-overlay{position:fixed; inset:0; background:rgba(10,20,30,.5); display:flex; align-items:center; justify-content:center; z-index:100;}
 .modal-overlay.hidden{display:none;}
-.modal{background:#fff; border-radius:10px; width:640px; max-width:92vw; max-height:82vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.modal{background:var(--panel); border-radius:10px; width:640px; max-width:92vw; max-height:82vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.3);}
 .modal-header{display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--border);}
 .modal-close{background:none; border:none; font-size:16px; color:var(--text-muted);}
 .modal-body{padding:16px 20px; overflow-y:auto; font-size:13px; line-height:1.6;}
-.modal-body pre{background:#f4f7f9; padding:12px; border-radius:6px; font-family:var(--mono); font-size:12.5px; overflow-x:auto;}
+.modal-body pre{background:var(--bg); padding:12px; border-radius:6px; font-family:var(--mono); font-size:12.5px; overflow-x:auto;}
 
 /* Landing hero */
 .hero{background:linear-gradient(135deg,var(--navy-900),var(--navy-700)); color:#fff; border-radius:14px; padding:36px 40px; margin-bottom:22px;}
@@ -235,3 +252,27 @@ td.num{font-family:var(--mono); text-align:right;}
   .view{padding:0; max-width:100%;}
   body{background:#fff;}
 }
+
+/* ---- Dark mode overrides for elements that use a hardcoded light tint
+   rather than a theme variable (status pills, highlighted rows, panels). ---- */
+:root[data-theme="dark"] .data-badge.real{background:#12351f; color:#7be3a4; border-color:#1f5a35;}
+:root[data-theme="dark"] .data-badge.illustrative{background:#3a2c10; color:#f0c368; border-color:#5c451a;}
+:root[data-theme="dark"] .tag-demo{background:#3a2c10; color:#f0c368;}
+:root[data-theme="dark"] .tag-model{background:#0f2e36; color:#7fd8ea;}
+:root[data-theme="dark"] .tag-input{background:#12351f; color:#7be3a4;}
+:root[data-theme="dark"] .tag-field{background:#2a1f3d; color:#c9a6f0;}
+:root[data-theme="dark"] tr.highlight-recommended{background:#12291b;}
+:root[data-theme="dark"] .recommend-panel{background:#0f2417; border-color:#1f5a35;}
+:root[data-theme="dark"] th{background:#182636;}
+:root[data-theme="dark"] .heatflow-bar-track{background:#1b2a3c;}
+:root[data-theme="dark"] .gauge-track{stroke:#233246;}
+:root[data-theme="dark"] .wizard-step.active{background:#0f2e36;}
+:root[data-theme="dark"] .preset-btn.selected{background:#0f2e36;}
+:root[data-theme="dark"] .form-row input, :root[data-theme="dark"] .form-row select, :root[data-theme="dark"] .form-row textarea{background:#0d1826; color:var(--text); border-color:var(--border);}
+:root[data-theme="dark"] .chart-comfort-band{fill:#12351f; opacity:.45;}
+:root[data-theme="dark"] .callout-warn{background:#3a2c10; border-color:#5c451a;}
+:root[data-theme="dark"] .callout-warn h3{color:#f0c368;}
+:root[data-theme="dark"] .callout-error{background:#3a1614; border-color:#5c2420;}
+:root[data-theme="dark"] .workflow-col.old{background:#3a1614; border-color:#5c2420;}
+:root[data-theme="dark"] .workflow-col.new{background:#0f2417; border-color:#1f5a35;}
+@media print{ :root[data-theme="dark"] body{background:#fff; color:#000;} }
