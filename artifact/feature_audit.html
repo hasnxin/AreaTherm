@@ -1,0 +1,300 @@
+<title>Feature Checklist Audit</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+:root{
+  --navy:#10202F; --navy-2:#1B3450; --accent:#1F8A9E; --accent-soft:#DCEFF2;
+  --bg:#F6F8FA; --surface:#FFFFFF; --surface-2:#EEF2F5;
+  --text:#151E27; --muted:#5B6B7C; --border:#DCE3E9;
+  --done:#1F9D55; --done-soft:#E5F7EC;
+  --partial:#B4720E; --partial-soft:#FBF0DC;
+  --missing:#C93B3B; --missing-soft:#FBE7E7;
+  --code-bg:#0E1B27; --code-text:#D8E6EC;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1219; --surface:#111B24; --surface-2:#16222D;
+    --text:#E4EBF0; --muted:#93A3B0; --border:#25333F;
+    --navy:#9FC3D6; --navy-2:#B7D6E4; --accent:#4DB8CC; --accent-soft:#123039;
+    --done:#4FBE81; --done-soft:#123322;
+    --partial:#E0A63F; --partial-soft:#332608;
+    --missing:#E27272; --missing-soft:#341717;
+    --code-bg:#080F16; --code-text:#C7D8E0;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1219; --surface:#111B24; --surface-2:#16222D;
+  --text:#E4EBF0; --muted:#93A3B0; --border:#25333F;
+  --navy:#9FC3D6; --navy-2:#B7D6E4; --accent:#4DB8CC; --accent-soft:#123039;
+  --done:#4FBE81; --done-soft:#123322;
+  --partial:#E0A63F; --partial-soft:#332608;
+  --missing:#E27272; --missing-soft:#341717;
+  --code-bg:#080F16; --code-text:#C7D8E0;
+}
+
+*{box-sizing:border-box;}
+body{ background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:15px; line-height:1.55; }
+h1,h2,h3{ font-family:'IBM Plex Sans'; font-weight:700; text-wrap:balance; color:var(--text); }
+.mono{ font-family:'IBM Plex Mono',ui-monospace,monospace; }
+
+.shell{ display:flex; max-width:1240px; margin:0 auto; align-items:flex-start; }
+.toc{ position:sticky; top:0; width:230px; flex:none; height:100vh; overflow-y:auto; padding:28px 16px 28px 24px; border-right:1px solid var(--border); }
+.toc-title{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:14px; }
+.toc a{ display:flex; justify-content:space-between; gap:6px; padding:5px 10px; margin:1px 0; border-radius:6px; color:var(--muted); text-decoration:none; font-size:13px; }
+.toc a:hover{ background:var(--surface-2); color:var(--text); }
+.toc a .n{ font-family:'IBM Plex Mono'; font-size:10.5px; opacity:.7; }
+
+main{ flex:1; min-width:0; padding:40px 48px 100px; max-width:900px; }
+
+header.hero{ margin-bottom:32px; }
+.eyebrow{ display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono'; font-size:12px; color:var(--navy-2); background:var(--accent-soft); border:1px solid var(--border); padding:4px 10px; border-radius:5px; margin-bottom:16px; }
+h1.title{ font-size:32px; margin:0 0 10px; }
+.lede{ color:var(--muted); font-size:16px; max-width:66ch; }
+
+/* scorecard */
+.scorecard{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:28px 0 8px; }
+.score-tile{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px 16px; }
+.score-tile .tier-label{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:6px; }
+.score-tile .tier-desc{ font-size:11.5px; color:var(--muted); margin-top:4px; }
+.score-tile .frac{ font-family:'IBM Plex Mono'; font-size:24px; font-weight:600; }
+.score-tile.t1 .frac{ color:var(--partial); }
+.score-tile.t2 .frac{ color:var(--partial); }
+.score-tile.t3 .frac{ color:var(--done); }
+.score-tile.t4 .frac{ color:var(--done); }
+@media (max-width:760px){ .scorecard{ grid-template-columns:repeat(2,1fr); } }
+
+section{ margin:48px 0; scroll-margin-top:20px; }
+section > h2{ font-size:21px; margin:0 0 4px; display:flex; align-items:baseline; gap:10px; }
+.section-intro{ color:var(--muted); margin:0 0 18px; max-width:70ch; font-size:14px; }
+
+.callout{ background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--partial); border-radius:8px; padding:14px 18px; margin:0 0 20px; font-size:14px; }
+.callout.crit{ border-left-color:var(--missing); }
+.callout.good{ border-left-color:var(--done); }
+.callout b{ color:var(--text); }
+
+.row{ display:flex; gap:12px; padding:11px 4px; border-bottom:1px solid var(--border); align-items:flex-start; }
+.row:last-child{ border-bottom:none; }
+.pill{ flex:none; font-family:'IBM Plex Mono'; font-size:10.5px; font-weight:600; letter-spacing:.03em; padding:3px 8px; border-radius:5px; margin-top:1px; white-space:nowrap; }
+.pill.done{ background:var(--done-soft); color:var(--done); }
+.pill.partial{ background:var(--partial-soft); color:var(--partial); }
+.pill.missing{ background:var(--missing-soft); color:var(--missing); }
+.row .body{ min-width:0; }
+.row .item{ font-weight:600; font-size:14px; }
+.row .evidence{ color:var(--muted); font-size:12.5px; margin-top:3px; }
+.row .evidence .mono{ color:var(--navy-2); }
+
+.group-card{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:6px 18px; margin-bottom:16px; }
+.group-title{ font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--navy-2); padding:12px 4px 4px; }
+
+footer.end{ margin-top:60px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:13px; }
+</style>
+
+<div class="shell">
+  <nav class="toc">
+    <div class="toc-title">Feature Audit</div>
+    <a href="#summary">Summary</a>
+    <a href="#core">Core (SIH Reqs) <span class="n">Tier 1</span></a>
+    <a href="#climate">Climate &amp; Location</a>
+    <a href="#design">Shelter Design</a>
+    <a href="#materials">Materials</a>
+    <a href="#simulation">Simulation &amp; Occupancy</a>
+    <a href="#viz">Visualization</a>
+    <a href="#optimization">Optimization</a>
+    <a href="#reports">Reports</a>
+    <a href="#settings">Settings &amp; Validation</a>
+    <a href="#ux">UI / UX &amp; Nav</a>
+    <a href="#persistence">Persistence</a>
+    <a href="#apis">Extra API Sources</a>
+    <a href="#reliability">Reliability <span class="n">P0</span></a>
+    <a href="#removed">Removed Items</a>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <span class="eyebrow mono">AREATHERM_COMPLETE_FEATURE_LIST_v3.md vs. current prototype</span>
+      <h1 class="title">Feature Checklist Audit</h1>
+      <p class="lede">Every claim below was checked directly against the running code — file and line cited where it matters — not against what the app is described as doing. Three states: <b style="color:var(--done)">Done</b> (matches as specified), <b style="color:var(--partial)">Partial</b> (the idea exists but differs from the exact spec, or the data exists but isn't surfaced), <b style="color:var(--missing)">Missing</b> (no trace in the code).</p>
+
+      <div class="scorecard">
+        <div class="score-tile t1"><div class="tier-label">Tier 1 — Must-Have</div><div class="frac">11 / 15</div><div class="tier-desc">solid core, gaps in occupancy heat model &amp; reliability layer</div></div>
+        <div class="score-tile t2"><div class="tier-label">Tier 2 — Strong Additions</div><div class="frac">7 / 12</div><div class="tier-desc">assumptions/validation honesty is a genuine strength</div></div>
+        <div class="score-tile t3"><div class="tier-label">Tier 3 — Nice-to-Have</div><div class="frac">1 / 6</div><div class="tier-desc">only guided workflow steps exist</div></div>
+        <div class="score-tile t4"><div class="tier-label">Tier 4 — Don't Do</div><div class="frac">7 / 7 clean</div><div class="tier-desc">none of the explicitly out-of-scope items were built</div></div>
+      </div>
+    </header>
+
+    <section id="summary">
+      <h2>Summary — what this means</h2>
+      <div class="callout crit">
+        <b>Biggest gap: the entire "Reliability, Crash Prevention &amp; Caching" section (checklist's own Tier 1 item #15) is missing.</b> No request timeouts, no retry/backoff, no circuit breaker, no fallback chain beyond a flat cache, no global exception handler. The checklist itself calls this "a P0 risk, not polish" — worth prioritizing before a live demo on venue wifi.
+      </div>
+      <div class="callout">
+        <b>Direct conflict with a change made earlier in this session:</b> the checklist's "Dashboard Simplification" section asks for exactly the 4 primary metric cards + collapsible "Detailed Analytics" pattern that was just <i>removed</i> from the Dashboard (at your request) and replaced with the "Explore the Platform" navigation grid. Those metrics still exist on the Thermal Simulation page — just not on the Dashboard anymore. Flagging this since the checklist and the live app now disagree on purpose.
+      </div>
+      <div class="callout good">
+        <b>Genuine strength: scientific-integrity language matches the checklist's honesty rules almost exactly.</b> No invented accuracy figure (no "±2–3°C"), no false "ASHRAE 140 validated" claim, no fabricated future date — the app consistently says "Not yet validated" / "Field validation required before deployment." The checklist explicitly warns against all three of these; the app already avoids them.
+      </div>
+    </section>
+
+    <section id="core">
+      <h2>Core Functionality — the 3 SIH 26051 Requirements</h2>
+      <p class="section-intro">These are the checklist's own "Tier 1: Absolute Must-Haves."</p>
+
+      <div class="group-card">
+        <div class="group-title">Requirement 1 — Shelter Inside Temperature Prediction</div>
+        <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Hourly prediction, min/max range, temperature curve graph</div><div class="evidence">Two-node RC model stepped hourly; <span class="mono">engine.js:172–279</span>, rendered in <span class="mono">ui-2.js</span> Thermal Simulation page</div></div></div>
+        <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">"Real-time update when design parameters change"</div><div class="evidence">Recomputes on an explicit "Run Simulation" click, not live as you edit a field</div></div></div>
+        <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Solar gain, wall/roof/floor losses, ventilation losses, thermal mass exchange</div><div class="evidence">All present as separate terms — <span class="mono">engine.js:197–270</span></div></div></div>
+        <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Occupancy heat generation accounted for</div><div class="evidence">Only a flat manual "Internal heat gain (W)" number is used (<span class="mono">engine.js:221</span>); the "Occupancy (persons)" count is stored (<span class="mono">store.js:22</span>) but never read anywhere in <span class="mono">engine.js</span> — occupant count doesn't actually drive the physics</div></div></div>
+      </div>
+
+      <div class="group-card">
+        <div class="group-title">Requirement 2 — Thermal Energy from Solar Radiation</div>
+        <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Daily + annual solar (NASA POWER), sunshine window, orientation impact on gain</div><div class="evidence"><span class="mono">nasa-power.js</span>, orientation factor table in <span class="mono">ARCHITECTURE.md §3.5</span></div></div></div>
+        <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Orientation-specific recommendation text ("south-facing better in winter", etc.)</div><div class="evidence">The Evaluator Summary's "Why this design?" bullets are real, computed reasoning — not the canned per-orientation sentences the checklist describes, but arguably more credible since they're derived from actual results</div></div></div>
+      </div>
+
+      <div class="group-card">
+        <div class="group-title">Requirement 3 — Heat Flow Details</div>
+        <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Hourly W-by-W breakdown</div><div class="evidence">The engine computes hourly internally, but the Thermal Simulation UI's "Heat Flow Analysis" panel only displays <b>daily kWh totals</b> per component, not an hourly time series of each loss term</div></div></div>
+        <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Daily totals per component, net energy balance</div><div class="evidence"><span class="mono">ui-2.js</span> Thermal Simulation page — solar/wall/roof/floor/opening/ventilation/mass, net kWh/day</div></div></div>
+        <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">"Stacked bar chart" visual + direction indicators</div><div class="evidence">Rendered as separate horizontal bar rows (green=gain, red=loss), not one single stacked/segmented bar — same information, different chart form</div></div></div>
+      </div>
+    </section>
+
+    <section id="climate">
+      <h2>Climate &amp; Location Features</h2>
+      <div class="group-card">
+        <div class="group-title">Real climate data integration</div>
+        <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Open-Meteo: temperature, humidity, wind, cloud cover — hourly, live</div><div class="evidence"><span class="mono">weather-api.js:66-81</span></div></div></div>
+        <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Open-Meteo precipitation</div><div class="evidence">Not in the fetched parameter list (<span class="mono">weather-api.js:67</span>)</div></div></div>
+        <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">NASA POWER: GHI, DNI, daily/annual totals, 7-day cache</div><div class="evidence"><span class="mono">nasa-power.js:38-64</span></div></div></div>
+        <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">NASA POWER diffuse radiation component</div><div class="evidence">Only GHI + DNI parameters requested, no diffuse term</div></div></div>
+        <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Data source badges ("Real Data" / live)</div><div class="evidence"><span class="mono">util.js:11-18</span> <span class="mono">U.badge()</span>, used throughout</div></div></div>
+      </div>
+      <div class="group-card">
+        <div class="group-title">Multi-location support</div>
+        <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">10 reference Indian locations, region + coordinates + elevation shown</div><div class="evidence"><span class="mono">data.js:13-23</span></div></div></div>
+        <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Manual coordinate entry, interactive map picker, climate-zone classification label</div><div class="evidence">Dropdown-only selection from the fixed 10; no map/geocoding UI found</div></div></div>
+        <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Elevation display</div><div class="evidence">Shown, but from a hardcoded reference table, not a live elevation API/DEM lookup</div></div></div>
+      </div>
+      <div class="group-card">
+        <div class="group-title">Climate summary cards</div>
+        <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Temperature profile card (diurnal swing shown; monthly breakdown graph not)</div><div class="evidence">NASA POWER already fetches <span class="mono">monthlyGhi</span>/<span class="mono">monthlyTemp</span> (<span class="mono">nasa-power.js:61-62</span>) but neither is read or charted anywhere in <span class="mono">ui-1.js</span> — the data exists, it's just not surfaced</div></div></div>
+        <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Solar card's "best months for heating" / monsoon impact / seasonal graph</div><div class="evidence">Only the single annual figure is shown</div></div></div>
+        <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Humidity &amp; wind card</div><div class="evidence">Wind/RH/cloud shown as one compact tile; no "ventilation need" calculation or monsoon warning</div></div></div>
+        <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Dedicated "Design implications" auto-recommendation card on the Location page</div><div class="evidence">No such card found — closest equivalent is the Evaluator Summary's post-simulation reasoning, which lives on a different page after a run, not on Location &amp; Climate itself</div></div></div>
+      </div>
+    </section>
+
+    <section id="design">
+      <h2>Shelter Design Features</h2>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Shape selector</div><div class="evidence">Rectangular, Square, Circular, Dome, Semi-circular, Custom (<span class="mono">ui-1.js:316</span>) — more variety than asked, but no L-shaped option</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Dimension inputs + derived floor/wall/roof area, volume</div><div class="evidence"><span class="mono">ui-1.js:321-327, 374-377</span></div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Surface-area-to-volume ratio displayed</div><div class="evidence">Derivable from shown values but not computed/shown as its own metric</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">All 8 compass directions + custom azimuth</div><div class="evidence"><span class="mono">ui-1.js:335</span></div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Sun position indicator</div><div class="evidence">2D preview shows an "N↑" compass mark only, no sun-path/position graphic</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Window area/count/face, glazing type (single/double/triple/Low-E) with U-value + SHGC shown, door area, ACH</div><div class="evidence"><span class="mono">ui-1.js:344-353</span></div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Door material/insulation selection</div><div class="evidence">Only door area is configurable, no door material picker</div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">2D top-down visualization</div><div class="evidence"><span class="mono">ui-1.js:237-260</span> — shows shape, orientation and one generic front-face window mark; not labeled with dimensions and doesn't reflect the actual configured window/door count or placement</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">3D visualization</div><div class="evidence">Explicitly out of scope by design — <span class="mono">README.md</span>: "no 3D preview (2D top-down schematic only)"</div></div></div>
+    </section>
+
+    <section id="materials">
+      <h2>Material Database &amp; Selection</h2>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Full property set: k, density, specific heat, absorptivity, emissivity (+ reflectivity, bonus); U-value calculated from layers</div><div class="evidence"><span class="mono">data.js:31-63</span>, <span class="mono">engine.js:85-98</span></div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Wall (7/7), insulation (7/7), glazing (4/4), thermal mass (6/6 + "none") options all match the checklist by name</div><div class="evidence"><span class="mono">data.js:31-69</span></div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Roof options</div><div class="evidence">RCC, Metal, Insulated Metal, Composite present; Thatch/natural roofing not in the library</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Custom material input (user-defined properties)</div><div class="evidence">No "add material" UI found across the Materials or Designer pages</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Regional availability (Yes/No, local sourcing, lead time, transport multiplier, supplier info)</div><div class="evidence">Not modeled — only a single coarse <span class="mono">sustainability: HIGH/MEDIUM/LOW</span> tag exists per material</div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Cost database</div><div class="evidence">Flat <span class="mono">costPerM2</span>/<span class="mono">costPerKg</span> per material exists and feeds the optimizer's cost score (<span class="mono">engine.js:344-355</span>); no installation-complexity factor, waste factor, or CPWD/state-PWD Schedule-of-Rates citation — figures are unsourced reference numbers</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Detailed sustainability database (embodied carbon, recyclability %, water use, health impact, end-of-life)</div><div class="evidence">Only the single HIGH/MEDIUM/LOW tag exists, no per-metric breakdown</div></div></div>
+    </section>
+
+    <section id="simulation">
+      <h2>Thermal Simulation Engine &amp; Occupancy</h2>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Hourly transient RC network, ground coupling, ventilation/infiltration, thermal mass response</div><div class="evidence"><span class="mono">engine.js:149-279</span>, documented in <span class="mono">ARCHITECTURE.md §3</span></div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Separate interior/exterior surface temperature nodes; radiation heat transfer as its own term</div><div class="evidence">By design a simplified 2-node model (indoor air + thermal mass) — sky longwave radiation is explicitly folded into the sol-air term rather than modeled separately (disclosed in Settings' Assumptions list)</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Occupancy Heat Generation Model — activity-based wattage presets (Sleeping ~85W, Resting ~120W, Light ~180W, Moderate ~240W, Heavy ~360W per person)</div><div class="evidence">No such mapping exists. Note: this session added a "clothing/activity level" selector, but it only shifts the <i>comfort temperature band</i> — it does not compute occupant heat output in Watts, which is what this checklist item asks for</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Sensible/latent heat split + occupancy-linked ventilation coupling + moisture balance</div><div class="evidence">No humidity/moisture node exists anywhere in <span class="mono">engine.js</span> — only the two temperature nodes</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Occupancy schedule (varying by hour)</div><div class="evidence">Internal gains are constant-per-hour only, disclosed as such in the Assumptions list</div></div></div>
+    </section>
+
+    <section id="viz">
+      <h2>Visualization &amp; Analytics</h2>
+      <div class="callout crit">
+        <b>Dashboard's 4 primary metric cards were removed this session</b> (Thermal Comfort Score / Solar Gain / Heat Loss / Avg Indoor Temp), at your explicit request, and replaced with the "Explore the Platform" navigation grid. They still exist — just on the Thermal Simulation page now, not the Dashboard. The checklist's "Dashboard Simplification" section asks for the exact pattern that was just removed.
+      </div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Comfort score explicitly labeled as a custom index, not PMV/PPD</div><div class="evidence">The formula is documented as a "weighted blend" in <span class="mono">ARCHITECTURE.md §3.8</span>, but the live UI itself doesn't carry an explicit "this is not a PMV/PPD standard" disclaimer next to the score</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">24h indoor-vs-ambient chart with comfort-band shading</div><div class="evidence"><span class="mono">ui-2.js:225</span>, <span class="mono">charts.js</span></div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">4-tier color-coded temperature curve (green/yellow/red/blue by zone)</div><div class="evidence">Only a single green comfort band is shaded; the curve itself isn't segment-colored by temperature zone</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Sankey diagram, pie chart for heat flow</div><div class="evidence"><span class="mono">charts.js</span> implements line/bar/gauge charts only — no Sankey or pie renderer</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Sensitivity analysis — ranked, signed bar chart per parameter</div><div class="evidence"><span class="mono">ui-2.js</span> Optimization page, <span class="mono">engine.js:446-463</span></div></div></div>
+    </section>
+
+    <section id="optimization">
+      <h2>Design Optimization &amp; Comparison</h2>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">60-candidate cap, weighted multi-criteria scoring (Comfort 40% / Retention 25% / Solar 15% / Efficiency 10% / Cost 10%)</div><div class="evidence"><span class="mono">engine.js:396</span>, <span class="mono">config.js:9-15</span> — weights match the checklist exactly</div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Parameter sweep ranges</div><div class="evidence"><span class="mono">engine.js:362-366</span>: orientation sweeps only 4 of 8 directions (South/SE/SW/East); insulation [50,75,100,150]mm (checklist also wants 25mm); window area [8,12,16,20]% (checklist also wants 10%); thermal mass [0,400,900,1600]kg (checklist wants [0,200,400,900]kg). Same structure, different exact grid.</div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Design comparison table</div><div class="evidence">Top-ranked designs (A–E) are shown and compared; not confirmed to expose all 60 evaluated candidates in one sortable/filterable table, and no Excel export found</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Recommended design highlighted, reasoning shown, "Adopt as current design" button</div><div class="evidence"><span class="mono">ui-2.js:308</span> <span class="mono">#adoptRecommendedBtn</span></div></div></div>
+    </section>
+
+    <section id="reports">
+      <h2>Reports &amp; Documentation</h2>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Full engineering report: location, geometry, materials, thermal performance, heat flow, comfort score, recommendations, assumptions/limitations, metadata (timestamp, model version, simulation ID, data sources)</div><div class="evidence"><span class="mono">ui-3.js</span> Reports page — verified against a live render this session</div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Download button</div><div class="evidence">"Print / Save as PDF" via the browser's print dialog, not a one-click generated-file download — functionally similar for the user, technically different from a direct PDF export</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Standalone one-page Climate Profile PDF and Material Comparison Sheet (with Excel export)</div><div class="evidence">Climate and material data are folded into the one main report; no separate printable artifacts or spreadsheet export found</div></div></div>
+    </section>
+
+    <section id="settings">
+      <h2>Settings &amp; Validation</h2>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Assumptions list (transient model, film coefficient, sky-longwave simplification, ground temp default, constant internal gains, PCM apparent-cp)</div><div class="evidence"><span class="mono">ui-3.js:289-295</span></div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Honest validation status — no invented accuracy figure, no false standards-compliance claim, no fabricated date</div><div class="evidence">Consistently "Not yet validated" / "Field validation required before deployment" wherever validation status appears</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Units toggle (°C/°F, m/ft, W/Btu)</div><div class="evidence"><span class="mono">ui-3.js:281-284</span> Settings shows units as fixed read-only labels, not a switchable control</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Dark mode toggle</div><div class="evidence">Single light theme only in <span class="mono">styles.css</span>, no toggle or dark palette</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Default location, default unit preferences, export preferences</div><div class="evidence">Not found in Settings</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">API status indicator (connected/offline)</div><div class="evidence">No live connectivity indicator found</div></div></div>
+    </section>
+
+    <section id="ux">
+      <h2>UI / UX &amp; Navigation</h2>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Guided 5-step workflow</div><div class="evidence">Steps are Location → Shelter → Materials → Comfort → Run; the checklist's step 4 is "Configure Openings/Windows" — in this app, windows/doors are only editable in the full Shelter Designer, not as a guided step</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Progress indicator, Next/Back navigation</div><div class="evidence"><span class="mono">ui-1.js:520-536</span></div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Sidebar navigation with all listed sections (+ an extra Evaluator Summary page); Simple/Advanced mode now actually filters visible sections</div><div class="evidence"><span class="mono">index.html</span>, wired this session</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Mobile-responsive hamburger sidebar</div><div class="evidence"><span class="mono">styles.css:218-241</span>, verified live this session</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Offline capability (cache 10 locations for no-network use)</div><div class="evidence">No service worker or bundled offline dataset — every location requires a live fetch on first load</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">4-tier color-coded comfort zones as a visual design language (green/yellow/red/blue)</div><div class="evidence">Same gap as under Visualization — only a single comfort band color is used</div></div></div>
+    </section>
+
+    <section id="persistence">
+      <h2>Data Flow &amp; Project Persistence</h2>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Multiple named, savable/loadable projects</div><div class="evidence"><span class="mono">store.js:31</span> — state holds exactly one <span class="mono">project</span> object (name + rename + reset); no project list or switcher</div></div></div>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Session persistence across refresh, clear-project option</div><div class="evidence">localStorage-backed <span class="mono">STORE</span>; "Reset project (clears all data)" confirmed in Settings</div></div></div>
+    </section>
+
+    <section id="apis">
+      <h2>Extra API Sources (checklist's own cross-validation wishlist)</h2>
+      <p class="section-intro">The checklist itself frames these as enhancements beyond the two core sources — none are implemented, which is a reasonable state for a prototype rather than a Tier-1 gap.</p>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">ERA5/Copernicus cross-check, IMD ground-station data, ISRO Bhuvan/SRTM elevation &amp; terrain shading, Solcast, cross-source confidence badge</div><div class="evidence">No references to any of these in the codebase; elevation remains a hardcoded reference table</div></div></div>
+    </section>
+
+    <section id="reliability">
+      <h2>Reliability, Crash Prevention &amp; Caching</h2>
+      <div class="callout crit">The checklist labels this section's items as Tier 1 (#15) — "a network hiccup crashing the live demo is a P0 risk, not polish." None of it exists yet.</div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Request timeouts, retry with backoff, circuit breaker on repeated API failures</div><div class="evidence">No <span class="mono">AbortController</span>/timeout/retry logic anywhere in <span class="mono">weather-api.js</span> or <span class="mono">nasa-power.js</span> — a hung fetch has no time limit</div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">Caching</div><div class="evidence">A flat 7-day TTL cache exists for both weather sources; not the short-TTL-live vs. long-TTL-normals split the checklist describes, and there's no DEM/elevation cache since no DEM is fetched</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Fallback chain (live → fresh cache → stale cache → bundled offline dataset)</div><div class="evidence">Only live-or-cache-or-visible-error exists; deliberately no bundled offline climate data ships (a scientific-integrity choice per README), which also means zero fallback if a venue has no network</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Input validation before simulation (reject negative thickness, invalid lat/lon, zero ACH/volume)</div><div class="evidence">Engine clamps some <i>output</i> aggregates to zero (<span class="mono">engine.js:266-270</span>) but doesn't reject bad <i>inputs</i> before they reach the solver</div></div></div>
+      <div class="row"><span class="pill missing">MISSING</span><div class="body"><div class="item">Global exception handler, failure logging</div><div class="evidence">Only local try/catch around specific async calls (e.g. <span class="mono">runLiveDemo</span>); no app-wide error boundary</div></div></div>
+    </section>
+
+    <section id="removed">
+      <h2>Things the checklist says to remove — status</h2>
+      <div class="row"><span class="pill done">DONE</span><div class="body"><div class="item">Hardcoded Ladakh demo dataset, placeholder material values, generic assumptions</div><div class="evidence">Git history: "Remove illustrative Ladakh demo dataset entirely"; README states no hand-authored climate data ships with the app</div></div></div>
+      <div class="row"><span class="pill partial">PARTIAL</span><div class="body"><div class="item">"Fixed Ladakh Demo button → replace with Load Real Weather"</div><div class="evidence">The button is correctly relabeled "Run Live Demo" and fetches real live data (not fake), but <span class="mono">app.js:63</span> still hardcodes <span class="mono">loadRealClimate("leh")</span> — the one-click demo always targets Leh specifically, it just does so honestly now</div></div></div>
+    </section>
+
+    <footer class="end">Audited against the live codebase in <span class="mono">C:\AreaTherm\app\js\</span> during this session — every ✅/⚠️/❌ above is backed by a grep or read of the actual source, not inferred from documentation.</footer>
+  </main>
+</div>
