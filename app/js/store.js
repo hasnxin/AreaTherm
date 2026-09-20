@@ -17,7 +17,7 @@ window.APP_STORE = (function () {
       roof: { materialId: "roof_rcc", thicknessMm: 150, insulationMaterialId: "ins_puf", insulationThicknessMm: 50 },
       floor: { materialId: "wall_concrete", thicknessMm: 100 },
       windows: [{ areaEach: 2.4, count: 1, orientation: "FRONT", glazingMaterialId: "glaze_double" }],
-      doors: [{ areaEach: 1.8, count: 1 }],
+      doors: [{ areaEach: 1.8, count: 1, orientation: "FRONT" }],
       airLeakageAch: 0.8,
       thermalMass: { materialId: "mass_stone", massKg: 800, surfaceAreaM2: 6 },
       occupancy: 2,

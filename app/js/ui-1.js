@@ -519,25 +519,29 @@ window.UI = window.UI || {};
       shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
     }
 
-    // Window marks on the actual configured face (FRONT/BACK/LEFT/RIGHT),
-    // one per window up to 6 spread evenly along that edge — not just a
-    // single generic mark regardless of count.
-    const win = design.windows && design.windows[0];
+    // Opening marks (doors, windows) on their actual configured face
+    // (FRONT/BACK/LEFT/RIGHT), one per opening up to 6 spread evenly along
+    // that edge — not just a single generic mark regardless of count.
     const edgeOf = { FRONT: 0, PRIMARY: 0, RIGHT: 90, BACK: 180, LEFT: 270 };
-    const winEdgeAngle = edgeOf[win ? win.orientation : "FRONT"] ?? 0;
-    const winCount = win ? Math.min(6, Math.max(1, win.count || 1)) : 0;
-    let winMarks = "";
-    if (win && winCount > 0) {
-      const along = winEdgeAngle % 180 === 0 ? w : h; // horizontal edges use width, vertical edges use height
-      for (let i = 0; i < winCount; i++) {
-        const t = (i + 1) / (winCount + 1) - 0.5; // -0.5..0.5 spread along the edge
-        const markLen = Math.min(along / (winCount + 1.5), along * 0.3);
-        const perp = winEdgeAngle % 180 === 0 ? { dx: t * along, dy: (winEdgeAngle === 0 ? -1 : 1) * h / 2 } : { dx: (winEdgeAngle === 90 ? 1 : -1) * w / 2, dy: t * along };
-        winMarks += winEdgeAngle % 180 === 0
-          ? `<rect x="${cx + perp.dx - markLen / 2}" y="${cy + perp.dy - 4}" width="${markLen}" height="8" fill="#2fb8cf"/>`
-          : `<rect x="${cx + perp.dx - 4}" y="${cy + perp.dy - markLen / 2}" width="8" height="${markLen}" fill="#2fb8cf"/>`;
+    function edgeMarks(orientation, count, color) {
+      const edgeAngle = edgeOf[orientation] ?? 0;
+      const n = Math.min(6, Math.max(1, count || 1));
+      const along = edgeAngle % 180 === 0 ? w : h; // horizontal edges use width, vertical edges use height
+      let marks = "";
+      for (let i = 0; i < n; i++) {
+        const t = (i + 1) / (n + 1) - 0.5; // -0.5..0.5 spread along the edge
+        const markLen = Math.min(along / (n + 1.5), along * 0.3);
+        const perp = edgeAngle % 180 === 0 ? { dx: t * along, dy: (edgeAngle === 0 ? -1 : 1) * h / 2 } : { dx: (edgeAngle === 90 ? 1 : -1) * w / 2, dy: t * along };
+        marks += edgeAngle % 180 === 0
+          ? `<rect x="${cx + perp.dx - markLen / 2}" y="${cy + perp.dy - 4}" width="${markLen}" height="8" fill="${color}"/>`
+          : `<rect x="${cx + perp.dx - 4}" y="${cy + perp.dy - markLen / 2}" width="8" height="${markLen}" fill="${color}"/>`;
       }
+      return marks;
     }
+    const win = design.windows && design.windows[0];
+    const winMarks = win ? edgeMarks(win.orientation || "FRONT", win.count, "#2fb8cf") : "";
+    const door = design.doors && design.doors[0];
+    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#8a5a10") : "";
 
     const labelOffset = 16;
     const edges = isRound ? [] : [
@@ -583,13 +587,14 @@ window.UI = window.UI || {};
         <g transform="rotate(${bearing} ${cx} ${cy})">
           ${shapeSvg}
           ${winMarks}
+          ${doorMarks}
         </g>
         ${wallLabels}
         ${dimLabels}
         <text x="${cx}" y="14" text-anchor="middle" class="chart-tick" font-size="11">N ↑</text>
         <text x="${cx}" y="${size - 6}" text-anchor="middle" class="chart-tick" font-size="10">Top-down schematic — illustrative</text>
         ${isLShape ? `<text x="${cx}" y="${size + 12}" text-anchor="middle" class="chart-tick" font-size="9.5">Wing B: ${(design.lengthB || 3).toFixed(1)}×${(design.widthB || 3).toFixed(1)} m</text>` : ""}
-        <text x="${cx}" y="${winLineY}" text-anchor="middle" class="chart-tick" font-size="9.5">${winCount ? winCount + " window" + (winCount > 1 ? "s" : "") + " on " + compassLabel(bearing + winEdgeAngle) + " face" : "No windows configured"}${doorArea ? " · Door " + doorArea.toFixed(1) + " m² (face not modeled)" : ""}</text>
+        <text x="${cx}" y="${winLineY}" text-anchor="middle" class="chart-tick" font-size="9.5">${win && win.count ? win.count + " window" + (win.count > 1 ? "s" : "") + " on " + compassLabel(bearing + (edgeOf[win.orientation || "FRONT"] ?? 0)) + " face" : "No windows configured"}${doorArea ? " · Door " + doorArea.toFixed(1) + " m² on " + compassLabel(bearing + (edgeOf[door.orientation || "FRONT"] ?? 0)) + " face" : ""}</text>
         <line x1="${size - 10 - scaleBarPx}" y1="${scaleLineY}" x2="${size - 10}" y2="${scaleLineY}" class="chart-axis"/>
         <text x="${size - 10 - scaleBarPx / 2}" y="${scaleLineY - 1}" text-anchor="middle" class="chart-tick" font-size="8.5">1 m</text>
       </svg>`;
@@ -658,6 +663,9 @@ window.UI = window.UI || {};
             <div class="form-inline">
               <div class="form-row"><label>Glazing type</label><select id="dGlazing">${glazeOpts}</select></div>
               <div class="form-row"><label>Door area (m²)</label><input id="dDoorArea" type="number" step="0.1" value="${d.doors[0].areaEach}"></div>
+              <div class="form-row"><label>Door face</label>
+                <select id="dDoorOrient">${["FRONT","BACK","LEFT","RIGHT"].map(v=>`<option ${(d.doors[0].orientation||"FRONT")===v?"selected":""}>${v}</option>`).join("")}</select>
+              </div>
               <div class="form-row"><label>Air leakage (ACH)</label><input id="dAch" type="number" step="0.1" value="${d.airLeakageAch}"></div>
             </div>
           </fieldset>
@@ -684,7 +692,7 @@ window.UI = window.UI || {};
             <h3>3D Preview <span class="tag tag-demo">illustrative — box approximation</span></h3>
             <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:8px; cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
-            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Windows are shown on the "Window face" wall set below; the door is always on the front wall (its face isn't modeled elsewhere in the app either). ${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape) ? "Shown as a bounding box — this view doesn't yet model curved or L-shaped footprints." : ""}</p>
+            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and windows are shown on the "Door face"/"Window face" walls set below — window orientation also drives the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape) ? "Shown as a bounding box — this view doesn't yet model curved or L-shaped footprints." : ""}</p>
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>Derived Geometry <span class="tag tag-model">calculated</span></h3>
@@ -744,6 +752,7 @@ window.UI = window.UI || {};
       currentShelter3D.update({
         width: g.L, length: g.W || g.L, height: design.height || 3,
         doorCount: (design.doors || []).reduce((s, dr) => s + (dr.count || 0), 0),
+        doorFace: (design.doors && design.doors[0] && design.doors[0].orientation) || "FRONT",
         windowCount: (design.windows || []).reduce((s, w) => s + (w.count || 0), 0),
         windowFace: (design.windows && design.windows[0] && design.windows[0].orientation) || "FRONT",
         wallColor: WALL_COLOR_BY_MATERIAL[wallMatId] || "#dfeef2",
@@ -834,7 +843,7 @@ window.UI = window.UI || {};
           count: parseInt(U.qs("#dWinCount", root).value) || d.windows[0].count,
           orientation: U.qs("#dWinOrient", root).value, glazingMaterialId: U.qs("#dGlazing", root).value
         }],
-        doors: [{ areaEach: parseFloat(U.qs("#dDoorArea", root).value) || d.doors[0].areaEach, count: 1 }],
+        doors: [{ areaEach: parseFloat(U.qs("#dDoorArea", root).value) || d.doors[0].areaEach, count: 1, orientation: U.qs("#dDoorOrient", root).value }],
         wall: {
           materialId: U.qs("#dWallMat", root).value,
           thicknessMm: parseFloat(U.qs("#dWallThick", root).value) || d.wall.thicknessMm,
