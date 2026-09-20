@@ -1,31 +1,42 @@
-/* AreaTherm — reference locations, material library, comfort profiles.
-   Climate data is never hand-authored here — every location's numbers
-   come from a live fetch (Open-Meteo + NASA POWER, see weather-api.js /
-   nasa-power.js). Only the location catalog itself (name/coordinates/
-   elevation, below) is static, since it's just a site-selection shortcut. */
+/* AreaTherm — reference locations, material library, comfort profiles,
+   occupancy activity levels. Climate data is never hand-authored here —
+   every location's numbers come from a live fetch (Open-Meteo + NASA POWER,
+   see weather-api.js / nasa-power.js). Only the location catalog itself
+   (name/coordinates/elevation, below) is static, since it's just a
+   site-selection shortcut — elevation is refined at runtime by a real
+   lookup (app/js/elevation.js) rather than trusted as-is. */
 
 window.APP_DATA = (function () {
 
   // ---- Predefined reference locations (for live Open-Meteo + NASA POWER lookup) ----
   // Coordinates/elevations are reference values for site selection, not
-  // survey-grade. Every location loads LIVE weather — no illustrative/demo
-  // climate data ships with the app.
+  // survey-grade — re-checked against general map sources on 2026-09-20 and
+  // corrected where the previous entry was off by a meaningful distance (see
+  // git history for the deltas). Every location loads LIVE weather — no
+  // illustrative/demo climate data ships with the app. Elevation shown in the
+  // app always prefers the live Elevation-API value (elevation.js) over this
+  // static figure when the fetch succeeds.
   const PREDEFINED_LOCATIONS = [
-    { id: "leh", name: "Leh, Ladakh", latitude: 34.1526, longitude: 77.5771, elevationM: 3500, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "kargil", name: "Kargil, Ladakh", latitude: 34.56, longitude: 76.11, elevationM: 2676, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "keylong", name: "Keylong, Himachal Pradesh", latitude: 32.22, longitude: 77.05, elevationM: 3170, region: "Himachal Pradesh", category: "High Himalaya" },
-    { id: "munsiyari", name: "Munsiyari, Uttarakhand", latitude: 30.05, longitude: 80.20, elevationM: 2298, region: "Uttarakhand", category: "High Himalaya" },
-    { id: "dras", name: "Drass, Ladakh", latitude: 34.42, longitude: 75.57, elevationM: 3280, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "srinagar", name: "Srinagar, J&K", latitude: 34.08, longitude: 75.34, elevationM: 1730, region: "Jammu & Kashmir (UT)", category: "Temperate valley" },
-    { id: "pune", name: "Pune, Maharashtra", latitude: 18.52, longitude: 73.85, elevationM: 625, region: "Maharashtra", category: "Tropical plateau" },
+    { id: "leh", name: "Leh, Ladakh", latitude: 34.15, longitude: 77.58, elevationM: 3500, region: "Ladakh (UT)", category: "Cold desert" },
+    { id: "kargil", name: "Kargil, Ladakh", latitude: 34.55, longitude: 76.13, elevationM: 2676, region: "Ladakh (UT)", category: "Cold desert" },
+    { id: "keylong", name: "Keylong, Himachal Pradesh", latitude: 32.57, longitude: 77.03, elevationM: 3080, region: "Himachal Pradesh", category: "High Himalaya" },
+    { id: "munsiyari", name: "Munsiyari, Uttarakhand", latitude: 30.07, longitude: 80.24, elevationM: 2298, region: "Uttarakhand", category: "High Himalaya" },
+    { id: "dras", name: "Drass, Ladakh", latitude: 34.43, longitude: 75.75, elevationM: 3280, region: "Ladakh (UT)", category: "Cold desert" },
+    { id: "srinagar", name: "Srinagar, J&K", latitude: 34.08, longitude: 74.80, elevationM: 1590, region: "Jammu & Kashmir (UT)", category: "Temperate valley" },
+    { id: "pune", name: "Pune, Maharashtra", latitude: 18.52, longitude: 73.88, elevationM: 560, region: "Maharashtra", category: "Tropical plateau" },
     { id: "bareilly", name: "Bareilly, Uttar Pradesh", latitude: 28.37, longitude: 79.43, elevationM: 168, region: "Uttar Pradesh", category: "Gangetic plain" },
-    { id: "nagpur", name: "Nagpur, Maharashtra", latitude: 21.14, longitude: 79.08, elevationM: 310, region: "Maharashtra", category: "Tropical plain" },
-    { id: "shimla", name: "Shimla, Himachal Pradesh", latitude: 31.77, longitude: 77.10, elevationM: 2159, region: "Himachal Pradesh", category: "Mid Himalaya" }
+    { id: "nagpur", name: "Nagpur, Maharashtra", latitude: 21.15, longitude: 79.09, elevationM: 310, region: "Maharashtra", category: "Tropical plain" },
+    { id: "shimla", name: "Shimla, Himachal Pradesh", latitude: 31.10, longitude: 77.17, elevationM: 2200, region: "Himachal Pradesh", category: "Mid Himalaya" }
   ];
 
   // ---- Material library ---------------------------------------------
   // All values are engineering-database reference values (typical/handbook
-  // ranges) — NOT independently lab-tested for this project. Editable.
+  // ranges) — NOT independently lab-tested for this project, and NOT sourced
+  // from a CPWD / state PWD Schedule of Rates. Editable. Costs are a rough
+  // materials-only planning estimate (material + installation + a waste
+  // factor) — replace with an actual SOR line item or vendor quotation
+  // before using any figure here in a real costing decision. Nothing in
+  // this file is labelled "verified".
   const MATERIALS = [
     // WALL
     { id: "wall_concrete", category: "WALL", name: "Concrete (dense)", density: 2400, k: 1.40, cp: 880, defaultThicknessMm: 200, absorptivity: 0.65, reflectivity: 0.35, emissivity: 0.90, costPerM2: 1400, sustainability: "LOW" },
@@ -80,6 +91,23 @@ window.APP_DATA = (function () {
     { id: "custom", label: "Custom", min: 18, max: 27 }
   ];
 
+  // ---- Occupancy activity levels -----------------------------------------
+  // "watts" is the TOTAL (sensible + latent) heat output per person — the
+  // order of magnitude documented in the ASHRAE Fundamentals Handbook, Ch. 9
+  // ("Heat and Moisture Given Off by Human Beings") and ISO 8996 metabolic-
+  // rate tables. "sensibleFrac" (share of that total which heats the air
+  // rather than becoming moisture) uses simplified fixed fractions that
+  // approximate the general trend in those references — sensible share
+  // falls as activity rises — not a literal reproduction of their exact
+  // per-temperature table values. See Settings -> Assumptions.
+  const ACTIVITY_LEVELS = [
+    { id: "SLEEPING", label: "Sleeping", watts: 85, sensibleFrac: 0.90 },
+    { id: "SEATED", label: "Resting / Seated", watts: 120, sensibleFrac: 0.75 },
+    { id: "LIGHT", label: "Light activity", watts: 180, sensibleFrac: 0.65 },
+    { id: "MODERATE", label: "Moderate activity", watts: 240, sensibleFrac: 0.55 },
+    { id: "HEAVY", label: "Heavy activity", watts: 360, sensibleFrac: 0.45 }
+  ];
+
   function materialsByCategory(cat) {
     return MATERIALS.filter(m => m.category === cat);
   }
@@ -90,9 +118,12 @@ window.APP_DATA = (function () {
   function predefinedLocationById(id) {
     return PREDEFINED_LOCATIONS.find(l => l.id === id);
   }
+  function activityLevelById(id) {
+    return ACTIVITY_LEVELS.find(a => a.id === id) || ACTIVITY_LEVELS[1];
+  }
 
   return {
-    PREDEFINED_LOCATIONS, MATERIALS, COMFORT_PROFILES,
-    materialsByCategory, materialById, predefinedLocationById
+    PREDEFINED_LOCATIONS, MATERIALS, COMFORT_PROFILES, ACTIVITY_LEVELS,
+    materialsByCategory, materialById, predefinedLocationById, activityLevelById
   };
 })();

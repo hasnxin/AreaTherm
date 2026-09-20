@@ -10,6 +10,30 @@ window.UI = window.UI || {};
     return `<div class="card"><p class="subtitle">No climate profile loaded yet. Go to <a href="#/location" style="color:var(--accent);font-weight:600;">Location &amp; Climate</a> and load a location first.</p></div>`;
   }
 
+  // Buckets a (possibly multi-day, sub-hourly) simulation series into 24
+  // hour-of-day averages for the stacked heat-flow chart — sign flipped so
+  // "loss" components read as negative bars (the engine's own convention is
+  // "positive Q = heat leaving the shelter").
+  function buildHourlyBuckets(series) {
+    const buckets = Array.from({ length: 24 }, () => ({ solar: [], internal: [], wall: [], roof: [], floor: [], opening: [], vent: [], mass: [] }));
+    series.forEach(s => {
+      const h = Math.floor(((s.hourDecimal % 24) + 24) % 24);
+      buckets[h].solar.push(s.qSolarWindow);
+      buckets[h].internal.push(s.qInternal);
+      buckets[h].wall.push(-s.qWall);
+      buckets[h].roof.push(-s.qRoof);
+      buckets[h].floor.push(-s.qFloor);
+      buckets[h].opening.push(-(s.qWindowCond + s.qDoorCond));
+      buckets[h].vent.push(-s.qVent);
+      buckets[h].mass.push(-s.qMassExchange);
+    });
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    return buckets.map((b, h) => ({
+      hour: h, solar: avg(b.solar), internal: avg(b.internal), wall: avg(b.wall), roof: avg(b.roof),
+      floor: avg(b.floor), opening: avg(b.opening), vent: avg(b.vent), mass: avg(b.mass)
+    }));
+  }
+
   // ---- Explain Calculation content builders --------------------------
   function explainWall(result, design, season) {
     const geom = result.geometry, u = result.uValues.wall;
@@ -90,14 +114,16 @@ At peak-sun hour (${peakSun.hourDecimal.toFixed(1)}h): G=${peakSun.gHoriz} W/m²
   }
   function explainVent(result, design) {
     const coldest = result.series.reduce((a, b) => a.tAmb < b.tAmb ? a : b);
-    return `<pre>Q_vent = ACH × Volume / 3600 × ρ_air × Cp_air × (T_indoor − T_amb)
+    return `<pre>Q_vent = ACH_total × Volume / 3600 × ρ_air × Cp_air × (T_indoor − T_amb)
+ACH_total = ACH_infiltration (wind-adjusted) + ACH_occupancy (per-person fresh-air allowance)
 
-ACH (wind-adjusted) ≈ ${design.airLeakageAch}
+ACH_infiltration ≈ ${result.ach.infiltration},  ACH_occupancy ≈ ${result.ach.occupancy},  ACH_total ≈ ${result.ach.total}
 Volume = ${result.geometry.volume.toFixed(1)} m³
 ρ_air = 1.2 kg/m³,  Cp_air = 1005 J/kgK
 T_indoor=${coldest.tIndoor}°C, T_amb=${coldest.tAmb}°C
 
-Q_vent (this hour) = ${coldest.qVent} W</pre>`;
+Q_vent (this hour) = ${coldest.qVent} W</pre>
+      <p class="hint">${result.occupancy.persons > 0 ? "Occupancy-linked ventilation loss: " + result.daily.occupancyVentLossKwh + " kWh/day — see Occupancy Diagnostics below." : "No occupants configured — ACH is infiltration-only."}</p>`;
   }
   function explainMass(result, design) {
     if (!design.thermalMass) return `<p>No thermal mass configured in this design.</p>`;
@@ -120,7 +146,8 @@ HeatRetention%  = ${result.scores.heatRetentionPct}%
 SolarUtilization% = ${result.scores.solarUtilizationPct}%
 
 Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
-      <p class="hint">Weights are configurable in Settings / Optimization.</p>`;
+      <p class="hint">Weights are configurable in Settings / Optimization. This is a custom, project-defined index —
+      not PMV/PPD or any other recognised thermal-comfort standard.</p>`;
   }
 
   function explainBtn(label, fn) {
@@ -180,6 +207,12 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         <div id="tempChart"></div>
       </div>
 
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Hourly Heat Flow Breakdown <span class="tag tag-model">W, representative day</span></h3>
+        <p class="hint">Every component of the energy balance, hour by hour — bars above zero are gains, below zero are losses.</p>
+        <div id="stackedHeatFlow"></div>
+      </div>
+
       <div class="grid grid-2">
         <div class="card">
           <h3>Heat Flow Analysis (daily totals)</h3>
@@ -193,7 +226,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
             <tr><td>Heat loss — roof</td><td class="num">${result.daily.roofLossKwh} kWh/day</td><td>${explainBtn("roof")}</td></tr>
             <tr><td>Heat loss — floor</td><td class="num">${result.daily.floorLossKwh} kWh/day</td><td>${explainBtn("floor")}</td></tr>
             <tr><td>Heat loss — openings</td><td class="num">${result.daily.openingLossKwh} kWh/day</td><td>${explainBtn("opening")}</td></tr>
-            <tr><td>Ventilation / infiltration loss</td><td class="num">${result.daily.ventLossKwh} kWh/day</td><td>${explainBtn("vent")}</td></tr>
+            <tr><td>Ventilation / infiltration loss (total)</td><td class="num">${result.daily.ventLossKwh} kWh/day</td><td>${explainBtn("vent")}</td></tr>
+            <tr><td>&nbsp;&nbsp;↳ of which occupancy-linked</td><td class="num">${result.daily.occupancyVentLossKwh} kWh/day</td><td></td></tr>
             <tr><td>Thermal mass exchange</td><td class="num">${result.daily.massExchangeKwh} kWh/day</td><td>${explainBtn("mass")}</td></tr>
             <tr><td>Heating requirement</td><td class="num">${result.daily.heatingReqKwh} kWh/day</td><td></td></tr>
             <tr><td>Cooling requirement</td><td class="num">${result.daily.coolingReqKwh} kWh/day</td><td></td></tr>
@@ -201,6 +235,19 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
           </table>
         </div>
       </div>
+
+      ${result.occupancy.persons > 0 ? `
+      <div class="card" style="margin-top:16px;">
+        <h3>Occupancy Heat &amp; Ventilation Diagnostics</h3>
+        <div class="grid grid-4">
+          <div class="metric-card"><div class="metric-label">Occupants</div><div class="metric-value" style="font-size:18px;">${result.occupancy.persons}</div><div class="metric-sub">${U.esc(result.occupancy.activityLabel)}</div></div>
+          <div class="metric-card"><div class="metric-label">Gross Sensible Heat Added</div><div class="metric-value" style="font-size:18px;">+${result.occupancy.sensibleKwhPerDay}</div><div class="metric-sub">kWh/day (occupant share only)</div></div>
+          <div class="metric-card"><div class="metric-label">Extra Ventilation Loss</div><div class="metric-value" style="font-size:18px;">−${result.occupancy.occupancyVentLossKwhPerDay}</div><div class="metric-sub">kWh/day (occupancy-linked ACH)</div></div>
+          <div class="metric-card"><div class="metric-label">Net Occupancy Effect</div><div class="metric-value" style="font-size:18px;">${result.occupancy.netOccupancyEffectKwh >= 0 ? "+" : ""}${result.occupancy.netOccupancyEffectKwh}</div><div class="metric-sub">kWh/day</div></div>
+        </div>
+        ${result.occupancy.note ? `<p class="hint" style="margin-top:8px;"><b>Note:</b> ${U.esc(result.occupancy.note)}</p>` : ""}
+        <p class="hint">Latent heat (moisture) from occupants: ${result.occupancy.latentW} W ≈ ${result.occupancy.latentKgPerHour} kg/h — reported for context only; this model has no humidity/psychrometric state, so moisture is not simulated as an indoor RH change.</p>
+      </div>` : ""}
 
       <div class="card" style="margin-top:16px;">
         <h3>Thermal Comfort Score ${explainBtn("score")}</h3>
@@ -223,24 +270,68 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         { name: "Indoor Temp", color: "#1f8a9e", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tIndoor })) },
         { name: "Ambient Temp", color: "#c93b3b", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tAmb })) }
       ], { height: 260, yLabel: "°C", xLabel: "Hours from simulation start", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max } });
+      CH.stackedHourlyChart(U.qs("#stackedHeatFlow", root), buildHourlyBuckets(result.series), { yLabel: "W" });
       CH.heatFlowDiagram(U.qs("#heatFlowDiv", root), result.daily);
       CH.scoreGauge(U.qs("#simGauge", root), result.scores.thermalComfortScore);
       wireExplainButtons(root, result, s.design, season);
     }
 
     U.on("#runSimBtn", "click", () => {
+      const check = ENGINE.validateDesign(STORE.get().design);
+      if (!check.valid) { alert("Please fix the following before running:\n\n- " + check.errors.join("\n- ")); return; }
       const timeStepMinutes = parseInt(U.qs("#simStep", root).value);
       const periodType = U.qs("#simPeriod", root).value;
       const days = periodType === "24H" ? 1 : periodType === "7D" ? 7 : 30;
       STORE.get().simConfig = { timeStepMinutes, periodType, days };
-      const res = ENGINE.runSimulation(STORE.get().design, season, STORE.get().simConfig);
-      STORE.recordSimulation(res);
-      window.APP.render();
-      window.APP.toast("Simulation complete.");
+      try {
+        const res = ENGINE.runSimulation(STORE.get().design, season, STORE.get().simConfig);
+        STORE.recordSimulation(res);
+        window.APP.render();
+        window.APP.toast("Simulation complete.");
+      } catch (e) {
+        alert("Simulation failed: " + e.message);
+      }
     }, root);
   };
 
   // ---------------------------------------------------------------------
+  function candidateFieldValue(c, key) {
+    switch (key) {
+      case "rank": return c.rank;
+      case "orient": return c.params.orient;
+      case "insul": return c.params.insul;
+      case "wpct": return c.params.wpct;
+      case "glz": return matName(c.params.glz);
+      case "mass": return c.params.mass;
+      case "comfort": return c.score.comfort;
+      case "retention": return c.score.retention;
+      case "solar": return c.score.solar;
+      case "energyScore": return c.score.energyScore;
+      case "costScore": return c.score.costScore;
+      case "cost": return c.cost;
+      case "total": return c.score.total;
+      default: return 0;
+    }
+  }
+
+  function renderAllCandidatesRows(root, opt, sortKey, sortDir) {
+    const tbody = U.qs("#allCandidatesBody", root);
+    if (!tbody) return;
+    const sorted = [...opt.all].sort((a, b) => {
+      const va = candidateFieldValue(a, sortKey), vb = candidateFieldValue(b, sortKey);
+      const cmp = typeof va === "string" ? va.localeCompare(vb) : (va - vb);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    tbody.innerHTML = sorted.map(c => `<tr class="${c.rank === 1 ? "highlight-recommended" : ""}">
+      <td class="num">${c.rank}${c.rank === 1 ? " ★" : ""}</td><td>${c.params.orient}</td><td>${c.params.insul} mm</td>
+      <td class="num">${Math.round(c.params.wpct * 100)}%</td><td>${matName(c.params.glz)}</td><td class="num">${c.params.mass} kg</td>
+      <td class="num">${c.score.comfort.toFixed(0)}</td><td class="num">${c.score.retention.toFixed(0)}</td>
+      <td class="num">${c.score.solar.toFixed(0)}</td><td class="num">${c.score.energyScore.toFixed(0)}</td>
+      <td class="num">${c.score.costScore.toFixed(0)}</td><td class="num">${c.cost.toLocaleString("en-IN")}</td>
+      <td class="num"><b>${c.score.total.toFixed(1)}</b></td>
+    </tr>`).join("");
+  }
+
   UI.renderOptimization = function (root) {
     const s = STORE.get();
     const season = STORE.currentSeason();
@@ -304,12 +395,12 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
           <div class="recommend-item"><div class="k">Heat loss</div><div class="v">${opt.recommended.result.daily.totalLossKwh} kWh/day</div></div>
           <div class="recommend-item"><div class="k">Thermal performance score</div><div class="v">${opt.recommended.score.total.toFixed(0)}/100</div></div>
         </div>
-        <p class="hint" style="margin-top:10px;">Estimated cost: ₹${opt.recommended.cost.toLocaleString("en-IN")} (materials-based estimate, model prediction — verify with local quotations).</p>
+        <p class="hint" style="margin-top:10px;">Estimated cost: ₹${opt.recommended.cost.toLocaleString("en-IN")} (materials-only planning estimate, not a CPWD/PWD SOR figure — verify with local quotations).</p>
         <button class="btn btn-accent btn-sm" id="adoptRecommendedBtn" style="margin-top:6px;">Adopt as current shelter design</button>
       </div>
 
       <div class="card" style="margin-bottom:16px;">
-        <h3>Design Comparison</h3>
+        <h3>Design Comparison (Top 5)</h3>
         <div class="table-wrap"><table><thead><tr><th>Parameter</th>${opt.top.map(c=>`<th>Design ${c.label}${c.isRecommended?" (Recommended)":""}</th>`).join("")}</tr></thead>
         <tbody>
           ${[
@@ -332,6 +423,23 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         </tbody></table></div>
       </div>
 
+      <div class="card" style="margin-bottom:16px;">
+        <h3>All Evaluated Candidates <span class="tag tag-model">${opt.candidatesEvaluated} configurations, sortable</span></h3>
+        <p class="hint">Click a column header to sort. This is the full candidate set the optimizer scored, not just the top 5 above.</p>
+        <button class="btn btn-sm" id="exportCsvBtn" style="margin-bottom:8px;">⬇ Export all candidates to CSV (opens in Excel)</button>
+        <div class="table-wrap" style="max-height:420px; overflow-y:auto;">
+          <table id="allCandidatesTable"><thead><tr>
+            <th data-sort="rank" class="sortable">#</th><th data-sort="orient" class="sortable">Orientation</th>
+            <th data-sort="insul" class="sortable">Insulation</th><th data-sort="wpct" class="sortable">Window %</th>
+            <th data-sort="glz" class="sortable">Glazing</th><th data-sort="mass" class="sortable">Thermal Mass</th>
+            <th data-sort="comfort" class="sortable">Comfort</th><th data-sort="retention" class="sortable">Retention</th>
+            <th data-sort="solar" class="sortable">Solar</th><th data-sort="energyScore" class="sortable">Energy</th>
+            <th data-sort="costScore" class="sortable">Cost Score</th><th data-sort="cost" class="sortable">Est. Cost (₹)</th>
+            <th data-sort="total" class="sortable">Total Score</th>
+          </tr></thead><tbody id="allCandidatesBody"></tbody></table>
+        </div>
+      </div>
+
       <div class="card">
         <h3>Sensitivity Analysis <span class="tag tag-model">from current baseline design</span></h3>
         <p class="hint">Impact on thermal score (Δ points) when each parameter is improved from the current baseline design.</p>
@@ -340,9 +448,10 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       ` : `<div class="card" style="margin-top:16px;"><p class="subtitle">Run optimization to generate and compare candidate designs.</p></div>`}
     `;
 
+    const weightTotalEl = U.qs("#weightTotal", root);
     function refreshWeightTotal() {
       const total = ["comfort","retention","solar","energy","cost"].reduce((a,k)=>a+w[k]*100,0);
-      U.qs("#weightTotal", root).textContent = `Current total: ${Math.round(total)}%` + (Math.round(total) !== 100 ? "  (will be normalized on run)" : "");
+      weightTotalEl.textContent = `Current total: ${Math.round(total)}%` + (Math.round(total) !== 100 ? "  (will be normalized on run)" : "");
     }
     refreshWeightTotal();
     U.qsa("[data-weight]", root).forEach(inp => inp.addEventListener("input", () => {
@@ -358,15 +467,36 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         window.APP.toast("Recommended design adopted as current shelter design.");
         window.APP.navigate("designer");
       }, root);
+
+      let allSortKey = "total", allSortDir = "desc";
+      renderAllCandidatesRows(root, opt, allSortKey, allSortDir);
+      U.qsa("#allCandidatesTable th[data-sort]", root).forEach(th => th.addEventListener("click", () => {
+        const key = th.dataset.sort;
+        if (allSortKey === key) allSortDir = allSortDir === "asc" ? "desc" : "asc";
+        else { allSortKey = key; allSortDir = "desc"; }
+        renderAllCandidatesRows(root, opt, allSortKey, allSortDir);
+      }));
+      U.on("#exportCsvBtn", "click", () => {
+        const headers = ["Rank", "Orientation", "Insulation (mm)", "Window %", "Glazing", "Thermal Mass (kg)", "Comfort", "Retention", "Solar", "Energy Score", "Cost Score", "Estimated Cost (INR)", "Total Score"];
+        const rows = opt.all.map(c => [c.rank, c.params.orient, c.params.insul, Math.round(c.params.wpct * 100), matName(c.params.glz), c.params.mass, c.score.comfort.toFixed(1), c.score.retention.toFixed(1), c.score.solar.toFixed(1), c.score.energyScore.toFixed(1), c.score.costScore.toFixed(1), c.cost, c.score.total.toFixed(1)]);
+        window.APP_EXPORT.downloadCsv("areatherm_design_candidates.csv", headers, rows);
+        window.APP.toast(`Exported ${opt.all.length} candidates to CSV.`);
+      }, root);
     }
 
     U.on("#runOptBtn", "click", () => {
+      const check = ENGINE.validateDesign(s.design);
+      if (!check.valid) { alert("Please fix the following before running:\n\n- " + check.errors.join("\n- ")); return; }
       const nw = normalizedWeights(w);
       s.weights = nw;
-      const result = ENGINE.runOptimization(s.design, season, s.simConfig, nw);
-      STORE.recordOptimization(result);
-      window.APP.render();
-      window.APP.toast(`Optimization complete — ${result.candidatesEvaluated} candidates evaluated.`);
+      try {
+        const result = ENGINE.runOptimization(s.design, season, s.simConfig, nw);
+        STORE.recordOptimization(result);
+        window.APP.render();
+        window.APP.toast(`Optimization complete — ${result.candidatesEvaluated} candidates evaluated.`);
+      } catch (e) {
+        alert("Optimization failed: " + e.message);
+      }
     }, root);
   };
 
@@ -383,7 +513,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
     window: { label: "Increase window area 10% → 20% of wall area", apply: d => { const geom = ENGINE.computeGeometry(d); d.windows[0].areaEach = geom.wallArea * 0.20; } },
     orientation: { label: "Change orientation East → South", apply: d => { d.orientation = "SOUTH"; d.azimuthDeg = 0; } },
     mass: { label: "Add thermal mass (800 kg stone)", apply: d => { d.thermalMass = { materialId: "mass_stone", massKg: 800, surfaceAreaM2: 6 }; } },
-    roof: { label: "Change roof to insulated composite roof", apply: d => { d.roof.materialId = "roof_composite"; } }
+    roof: { label: "Change roof to insulated composite roof", apply: d => { d.roof.materialId = "roof_composite"; } },
+    occupancy: { label: "Increase occupancy 2 → 6 persons (seated)", apply: d => { d.occupancy = 6; d.occupancyActivity = "SEATED"; } }
   };
 
   UI.renderWhatIf = function (root) {
@@ -409,6 +540,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       const before = JSON.parse(JSON.stringify(s.design));
       const after = JSON.parse(JSON.stringify(s.design));
       preset.apply(after);
+      const check = ENGINE.validateDesign(after);
+      if (!check.valid) { alert("This scenario produces an invalid design:\n\n- " + check.errors.join("\n- ")); return; }
       const beforeRes = ENGINE.runSimulation(before, season, s.simConfig);
       const afterRes = ENGINE.runSimulation(after, season, s.simConfig);
 
@@ -428,6 +561,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
                 <div class="metric-sub" style="color:${a>=b?'var(--good)':'var(--bad)'}">${a>=b?"+":""}${(a-b).toFixed(2)}</div>
               </div>`).join("")}
           </div>
+          ${key === "occupancy" && afterRes.occupancy.note ? `<p class="hint" style="margin-top:10px;"><b>Occupancy note:</b> ${U.esc(afterRes.occupancy.note)}</p>` : ""}
           <h3 style="margin-top:14px;">Indoor Temperature — Before vs After</h3>
           <div id="whatifChart"></div>
         </div>`;

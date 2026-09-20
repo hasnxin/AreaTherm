@@ -5,16 +5,26 @@ window.UI = window.UI || {};
   const DATA = window.APP_DATA, ENGINE = window.APP_ENGINE, STORE = window.APP_STORE, CH = window.APP_CHARTS, CFG = window.APP_CONFIG;
   function matName(id) { const m = DATA.materialById(id); return m ? m.name : id || "—"; }
 
-  function predictSteadyState(design, ambientC, solarWm2) {
+  // Steady-state point-balance approximation, kept consistent with the main
+  // transient engine's conventions by calling the SAME shared helpers
+  // runSimulation uses (windAdjustedInfiltrationAch, ventUAFromAch) rather
+  // than re-deriving the ACH/UA formulas here — occupant heat is split
+  // sensible/latent (only the sensible share heats the air) and ventilation
+  // includes the same wind-adjusted infiltration plus occupancy-linked ACH
+  // increment as runSimulation. `season` is only needed for its windMs.
+  function predictSteadyState(design, ambientC, solarWm2, season) {
     const geom = ENGINE.computeGeometry(design);
     const uWall = ENGINE.wallUValue(design), uRoof = ENGINE.roofUValue(design), uFloor = ENGINE.floorUValue(design);
     const win = design.windows[0];
     const uWin = ENGINE.windowUValue(win);
     const shgc = (DATA.materialById(win.glazingMaterialId) || {}).shgc || 0.7;
     const windowArea = (win.areaEach || 0) * (win.count || 0);
-    const ventUA = (design.airLeakageAch * geom.volume / 3600) * 1.2 * 1005;
+    const occ = ENGINE.computeOccupancyHeat(design);
+    const infiltrationAch = ENGINE.windAdjustedInfiltrationAch(design, season || { windMs: 2 });
+    const achTotal = infiltrationAch + ENGINE.occupancyAchIncrement(occ.persons, geom.volume);
+    const ventUA = ENGINE.ventUAFromAch(achTotal, geom.volume);
     const UA = uWall * geom.wallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + uWin * windowArea + ventUA;
-    const solarGain = windowArea * solarWm2 * 0.85 * shgc + (design.internalHeatGainW || 0);
+    const solarGain = windowArea * solarWm2 * 0.85 * shgc + occ.totalSensibleW;
     return ambientC + solarGain / UA;
   }
 
@@ -52,7 +62,7 @@ window.UI = window.UI || {};
         </tbody></table></div>
         <button class="btn btn-sm" id="addRowBtn" style="margin-top:8px;">+ Add row</button>
         <button class="btn btn-accent" id="runValidationBtn" style="margin-left:8px;">Compare Measured vs Predicted</button>
-        <p class="hint">Predicted values use a steady-state point-balance approximation (Q_solar + Q_internal = UA × ΔT)
+        <p class="hint">Predicted values use a steady-state point-balance approximation (Q_solar + Q_occupant,sensible = UA × ΔT)
         against the current shelter design — a simplification for point-in-time validation, documented as an assumption.
         Full transient validation requires continuous time-aligned field logging (future integration).</p>
       </div>
@@ -79,7 +89,7 @@ window.UI = window.UI || {};
 
     U.on("#runValidationBtn", "click", () => {
       const points = validationRows.map(r => ({
-        ...r, predicted: Math.round(predictSteadyState(s.design, r.ambient, r.solar) * 100) / 100
+        ...r, predicted: Math.round(predictSteadyState(s.design, r.ambient, r.solar, { windMs: r.wind }) * 100) / 100
       }));
       const stats = ENGINE.validationStats(points.map(p => ({ measured: p.measured, predicted: p.predicted })));
       STORE.addValidationDataset({ id: "VAL-" + Date.now(), ts: new Date().toISOString(), points, stats });
@@ -96,8 +106,14 @@ window.UI = window.UI || {};
           </div>
           <h3 style="margin-top:14px;">Measured vs Predicted</h3>
           <div id="valScatter" style="max-width:440px;"></div>
+          <button class="btn btn-sm" id="exportValCsvBtn" style="margin-top:10px;">⬇ Export rows to CSV</button>
         </div>`;
       CH.scatterChart(U.qs("#valScatter", wrap), points.map(p => ({ x: p.measured, y: p.predicted })), { xLabel: "Measured Indoor (°C)", yLabel: "Predicted Indoor (°C)" });
+      U.on("#exportValCsvBtn", "click", () => {
+        const headers = ["Hour", "Ambient (C)", "Solar (W/m2)", "Wind (m/s)", "RH (%)", "Measured Indoor (C)", "Predicted Indoor (C)"];
+        const rows = points.map(p => [p.hour, p.ambient, p.solar, p.wind, p.rh, p.measured, p.predicted]);
+        window.APP_EXPORT.downloadCsv("areatherm_validation_data.csv", headers, rows);
+      }, wrap);
     }, root);
   };
 
@@ -111,16 +127,19 @@ window.UI = window.UI || {};
     const simId = "SIM-" + now.getTime();
 
     root.innerHTML = `
-      <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
-        <div><b>Engineering Report</b> — printable / exportable to PDF via your browser's print dialog.</div>
-        <button class="btn btn-accent" id="printBtn">🖨 Print / Save as PDF</button>
+      <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div><b>Engineering Report</b> — printable / exportable to PDF via your browser's print dialog (works fully offline, no external library required).</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-sm" id="exportMaterialsBtn">⬇ Material Sheet (CSV)</button>
+          <button class="btn btn-accent" id="printBtn">🖨 Print / Save as PDF</button>
+        </div>
       </div>
       <div class="card" id="reportDoc" style="line-height:1.7;">
         <h1 style="text-align:center;">Area-Specific Passive Shelter Thermal Performance &amp; Design Optimization Report</h1>
         <p style="text-align:center;color:var(--text-muted);">Generated: ${now.toLocaleString()} &nbsp;|&nbsp; Model version: ${CFG.MODEL_VERSION} &nbsp;|&nbsp; Simulation ID: ${simId}</p>
         <hr/>
-        <div class="card" style="background:#fdf0d8;border-color:#f3ddac;">
-          <h3 style="color:#8a5a10;">Important Disclaimer</h3>
+        <div class="card callout-warn">
+          <h3>Important Disclaimer</h3>
           <p style="margin:0;">This report contains model-based predictions. Field validation against instrumented
           shelter measurements is <b>required</b> before deployment.<br/>
           Data source: <b>${s.climateSource ? U.esc(s.climateSource.label) : "Not set"}</b>
@@ -130,12 +149,13 @@ window.UI = window.UI || {};
         <h3 style="margin-top:16px;">1–2. Project &amp; Location</h3>
         <p>Project: <b>${U.esc(s.project.name)}</b><br/>
         Location: <b>${s.location ? U.esc(s.location.label) : "Not set"}</b>
-        ${s.location ? `(Lat ${s.location.latitude}, Lon ${s.location.longitude}, Elevation ${s.location.elevationM} m)` : ""}
+        ${s.location ? `(Lat ${s.location.latitude.toFixed(3)}, Lon ${s.location.longitude.toFixed(3)}, Elevation ${s.location.elevationM ?? "—"} m${s.location.elevationSource ? " — " + U.esc(s.location.elevationSource.label) : ""})` : ""}
         ${s.climateSource ? `<span class="tag tag-demo">${U.esc(s.climateSource.label)}</span>` : ""}</p>
 
         <h3>3. Climate Inputs (${s.seasonKey || "—"})</h3>
         ${season ? `<p>Ambient temperature: ${season.tMin} to ${season.tMax} °C · Solar irradiance: ${season.solarKwhDay} kWh/m²/day ·
-        Sunshine window: ${season.sunrise}h–${season.sunset}h · Wind: ${season.windMs} m/s · RH: ${season.rhPct}% · Cloud cover: ${season.cloudPct}%</p>` : "<p>—</p>"}
+        Sunshine window: ${season.sunrise}h–${season.sunset}h · Wind: ${season.windMs} m/s · RH: ${season.rhPct}% · Cloud cover: ${season.cloudPct}%
+        ${season.precipMmDayAvg != null ? " · Precipitation: " + season.precipMmDayAvg + " mm/day" : ""}</p>` : "<p>—</p>"}
 
         <h3>4. Shelter Geometry</h3>
         <p>Shape: ${s.design.shape} · Orientation: ${s.design.orientation}${s.design.orientation==="CUSTOM"?" ("+s.design.azimuthDeg+"° from South)":""} ·
@@ -149,11 +169,15 @@ window.UI = window.UI || {};
           <tr><td>Window</td><td>${matName(s.design.windows[0].glazingMaterialId)}</td><td>—</td><td>${ENGINE.windowUValue(s.design.windows[0]).toFixed(2)}</td></tr>
           <tr><td>Thermal mass</td><td>${s.design.thermalMass ? matName(s.design.thermalMass.materialId)+" ("+s.design.thermalMass.massKg+" kg)" : "None"}</td><td>—</td><td>—</td></tr>
         </table>
+        <p class="hint">Material costs are a rough materials + installation + waste-factor planning estimate — not
+        sourced from a CPWD/state PWD Schedule of Rates. Use the CSV export above for a full properties sheet.</p>
 
         <h3>7. Simulation Methodology</h3>
         <p>Two-node RC (indoor air + thermal mass) hourly energy-balance model. Solar gain via sol-air temperature
-        (opaque surfaces) and SHGC-based transmission (glazing). See ARCHITECTURE.md §3 for full formulas.
-        Time step: ${s.simConfig.timeStepMinutes} min · Period: ${s.simConfig.periodType}.</p>
+        (opaque surfaces) and SHGC-based transmission (glazing). Occupant heat is split into sensible (heats the
+        indoor-air node) and latent (reported as an illustrative moisture-generation figure only) shares by activity
+        level, and ventilation (ACH) includes a documented per-person fresh-air allowance on top of wind-adjusted
+        infiltration — see ARCHITECTURE.md SS3 for full formulas. Time step: ${s.simConfig.timeStepMinutes} min · Period: ${s.simConfig.periodType}.</p>
 
         <h3>8. Assumptions</h3>
         <ul>
@@ -161,6 +185,10 @@ window.UI = window.UI || {};
           <li>Ground temperature assumed equal to seasonal mean ambient unless overridden.</li>
           <li>Longwave sky radiation exchange not separately modelled (folded into sol-air simplification).</li>
           <li>PCM thermal mass modelled via elevated apparent specific heat over its melt band.</li>
+          <li>Occupant sensible/latent split uses simplified fixed fractions per activity level (see Settings), approximating
+          the general trend in ASHRAE Fundamentals Ch. 9 / ISO 8996 — not a literal reproduction of their exact tables.</li>
+          <li>Occupancy-linked ventilation uses a documented per-person fresh-air allowance (order-of-magnitude guideline,
+          not a specific ventilation-code compliance calculation).</li>
         </ul>
 
         ${result ? `
@@ -168,12 +196,14 @@ window.UI = window.UI || {};
         <table>
           <tr><td>Solar heat gain</td><td class="num">${result.daily.solarKwh} kWh/day</td></tr>
           <tr><td>Wall / roof / floor / opening / ventilation loss</td><td class="num">${result.daily.wallLossKwh} / ${result.daily.roofLossKwh} / ${result.daily.floorLossKwh} / ${result.daily.openingLossKwh} / ${result.daily.ventLossKwh} kWh/day</td></tr>
+          <tr><td>&nbsp;&nbsp;↳ of which occupancy-linked ventilation</td><td class="num">${result.daily.occupancyVentLossKwh} kWh/day</td></tr>
           <tr><td>Net energy balance</td><td class="num">${result.daily.netKwh} kWh/day</td></tr>
           <tr><td>Predicted indoor temperature range</td><td class="num">${result.comfort.minIndoor} – ${result.comfort.maxIndoor} °C</td></tr>
         </table>
         <h3>12. Thermal Comfort Analysis</h3>
         <p>Comfort duration: ${result.comfort.comfortHoursPerDay} h/day (day ${result.comfort.dayComfortPct}%, night ${result.comfort.nightComfortPct}%).
-        Thermal Comfort Score: <b>${result.scores.thermalComfortScore}/100</b>.</p>` : `<p><i>No simulation has been run yet for this report.</i></p>`}
+        Thermal Comfort Score: <b>${result.scores.thermalComfortScore}/100</b> — a custom, project-defined index (see Settings), not PMV/PPD.
+        ${result.occupancy.persons > 0 && result.occupancy.note ? `<br/>Occupancy note: ${U.esc(result.occupancy.note)}` : ""}</p>` : `<p><i>No simulation has been run yet for this report.</i></p>`}
 
         ${opt ? `
         <h3>13–15. Candidate Comparison, Optimization Results &amp; Recommended Design</h3>
@@ -181,23 +211,45 @@ window.UI = window.UI || {};
         ${opt.recommended.params.orient}-facing, ${matName(opt.recommended.design.wall.materialId)} wall,
         ${opt.recommended.params.insul}mm insulation, ${matName(opt.recommended.params.glz)} glazing at
         ${Math.round(opt.recommended.params.wpct*100)}% window area. Thermal score ${opt.recommended.score.total.toFixed(0)}/100,
-        estimated cost ₹${opt.recommended.cost.toLocaleString("en-IN")}.</p>
+        estimated cost ₹${opt.recommended.cost.toLocaleString("en-IN")} (materials-only planning estimate).</p>
         <h3>16. Sensitivity Analysis</h3>
         <p>See Optimization module for the ranked parameter-impact chart on this design.</p>` : `<p><i>No optimization run yet for this report.</i></p>`}
 
         <h3>17. Limitations</h3>
         <p>Climate inputs used here are ${s.climateSource ? s.climateSource.label.toLowerCase() : "user-provided"}, not
         field-measured. The thermal model is a simplified two-node transient RC network — it omits 3D conduction,
-        detailed longwave radiation exchange, and moisture transport. Results are model predictions requiring
-        engineering and field validation before construction decisions.</p>
+        detailed longwave radiation exchange, and moisture transport (occupant latent heat is reported, not simulated
+        as indoor humidity). Results are model predictions requiring engineering and field validation before
+        construction decisions. Expected accuracy has not been formally quantified against field data — no
+        instrumented-shelter dataset exists yet for this project (see Validation module).</p>
 
         <h3>18. Engineering Validation Requirements</h3>
-        <p>Before construction: (1) validate material properties against actual procured specifications: (2) instrument
+        <p>Before construction: (1) validate material properties against actual procured specifications and replace
+        the planning-estimate costs with a CPWD/PWD Schedule of Rates line item or vendor quotation; (2) instrument
         a pilot shelter and compare against the Validation module; (3) have a qualified structural/thermal engineer
         review the final design.</p>
       </div>`;
 
     U.on("#printBtn", "click", () => window.print(), root);
+    U.on("#exportMaterialsBtn", "click", () => {
+      const d = s.design;
+      const rows = [];
+      const pushMat = (element, matId, thicknessMm) => {
+        const m = DATA.materialById(matId);
+        if (!m) return;
+        rows.push([element, m.name, thicknessMm ?? "", m.density ?? "", m.k ?? "", m.cp ?? "", m.uValue ?? "", m.shgc ?? "", m.costPerM2 ?? m.costPerKg ?? "", m.sustainability ?? ""]);
+      };
+      pushMat("Wall", d.wall.materialId, d.wall.thicknessMm + "mm");
+      pushMat("Wall insulation", d.wall.insulationMaterialId, d.wall.insulationThicknessMm + "mm");
+      pushMat("Roof", d.roof.materialId, d.roof.thicknessMm + "mm");
+      pushMat("Roof insulation", d.roof.insulationMaterialId, d.roof.insulationThicknessMm + "mm");
+      pushMat("Floor", d.floor.materialId, d.floor.thicknessMm + "mm");
+      pushMat("Window glazing", d.windows[0].glazingMaterialId, "");
+      if (d.thermalMass) pushMat("Thermal mass", d.thermalMass.materialId, d.thermalMass.massKg + "kg");
+      const headers = ["Element", "Material", "Thickness/Qty", "Density (kg/m3)", "k (W/mK)", "Cp (J/kgK)", "U-value (W/m2K)", "SHGC", "Cost (INR/m2 or /kg)", "Sustainability"];
+      window.APP_EXPORT.downloadCsv("areatherm_material_sheet.csv", headers, rows);
+      window.APP.toast("Material comparison sheet exported.");
+    }, root);
   };
 
   // ---------------------------------------------------------------------
@@ -205,6 +257,7 @@ window.UI = window.UI || {};
     const s = STORE.get();
     const result = s.lastSimulationResult;
     const opt = s.lastOptimizationResult;
+    const weakest = opt ? (opt.all && opt.all.length ? opt.all[opt.all.length - 1] : opt.top[opt.top.length - 1]) : null;
 
     root.innerHTML = `
       <h1>Design Intelligence Summary</h1>
@@ -215,7 +268,7 @@ window.UI = window.UI || {};
         <div class="card"><h3>Location</h3><div style="font-size:16px;font-weight:700;">${s.location ? U.esc(s.location.label) : "Not selected"}</div>
           <div class="hint">${s.location ? (s.location.solarDataSource
             ? `${s.location.annualSolarKwhM2Yr} kWh/m²/yr (NASA POWER, ${U.esc(s.location.solarDataSource.period)}) · ${s.location.avgSunshineHoursDay}h daylight`
-            : (s.climateSource && s.climateSource.type === "REAL"
+            : (s.climateSource && s.climateSource.type !== "STALE_CACHED"
               ? `${STORE.currentSeason().solarKwhDay} kWh/m²/day · ${s.location.avgSunshineHoursDay}h daylight · ${STORE.currentSeason().cloudPct}% cloud cover (live avg, not annual climatology)`
               : `${s.location.annualSolarKwhM2Yr} kWh/m²/yr · ${s.location.avgSunshineHoursDay}h sunshine/day · ${s.location.avgCloudFreeDays} clear days/yr`)) : ""}</div></div>
         <div class="card"><h3>Climate Severity (${s.seasonKey || "—"})</h3><div style="font-size:16px;font-weight:700;">${STORE.currentSeason() ? STORE.currentSeason().tMin + "°C to " + STORE.currentSeason().tMax + "°C" : "—"}</div>
@@ -234,7 +287,7 @@ window.UI = window.UI || {};
               <div>Solar utilization: <b>${result.scores.solarUtilizationPct}%</b></div>
               <div>Heat retention: <b>${result.scores.heatRetentionPct}%</b></div>
               <div>Heat loss: <b>${result.daily.totalLossKwh} kWh/day</b></div>
-              <div>${opt ? `Optimization improvement: <b>+${(opt.recommended.score.total - opt.top[opt.top.length-1].score.total).toFixed(1)} pts</b> vs weakest evaluated candidate` : ""}</div>
+              <div>${opt && weakest ? `Optimization improvement: <b>+${(opt.recommended.score.total - weakest.score.total).toFixed(1)} pts</b> vs weakest of all ${opt.candidatesEvaluated} evaluated candidates` : ""}</div>
             </div>
           </div>
         </div>
@@ -247,6 +300,7 @@ window.UI = window.UI || {};
             <li>Optimized opening area for the local solar/heat-loss trade-off</li>
             <li>${s.design.thermalMass ? "Thermal mass added for night-time heat release" : "Thermal mass not yet configured — see What-If Analysis"}</li>
             <li>Orientation set to ${s.design.orientation} for solar exposure</li>
+            ${result.occupancy.persons > 0 ? `<li>Ventilation sized for ${result.occupancy.persons} occupant(s) at ${U.esc(result.occupancy.activityLabel)}</li>` : ""}
           </ul>
         </div>
       </div>
@@ -278,10 +332,17 @@ window.UI = window.UI || {};
           <h3>Mode</h3>
           <p>Simple Mode hides advanced engineering fields. Advanced Mode exposes full parameter control.
           Toggle in the sidebar.</p>
+          <h3 style="margin-top:16px;">Appearance</h3>
+          <div class="mode-toggle" style="max-width:200px;background:var(--bg);border:1px solid var(--border);">
+            <button id="themeLight" class="mode-btn ${s.theme!=="DARK"?"active":""}" style="color:var(--text);">Light</button>
+            <button id="themeDark" class="mode-btn ${s.theme==="DARK"?"active":""}" style="color:var(--text);">Dark</button>
+          </div>
           <h3 style="margin-top:16px;">Units</h3>
           <ul class="assumption-list">
             ${Object.entries(CFG.UNITS).map(([k,v]) => `<li>${k}: <b>${v}</b></li>`).join("")}
           </ul>
+          <p class="hint">Metric only in this pass (SI units throughout) — a Celsius/Fahrenheit or m/ft display
+          toggle is not implemented; every field is explicitly labelled with its unit instead.</p>
         </div>
         <div class="card">
           <h3>Assumptions &amp; Limitations</h3>
@@ -290,12 +351,54 @@ window.UI = window.UI || {};
             <li>Outside film coefficient: 23 W/m²K, wind-adjusted infiltration.</li>
             <li>Sky longwave radiation folded into the sol-air simplification (no separate term).</li>
             <li>Ground temperature defaults to seasonal mean ambient unless overridden.</li>
-            <li>Internal gains constant-per-hour unless an occupancy schedule is supplied.</li>
+            <li>Occupant heat uses fixed watt figures per activity level (ASHRAE Fundamentals Ch. 9 / ISO 8996 order
+            of magnitude) split into sensible/latent by simplified fixed fractions — not a literal reproduction of
+            those references' exact tables. Latent heat is reported (kg/h moisture), not simulated as indoor humidity.</li>
+            <li>Ventilation (ACH) = wind-adjusted infiltration + a documented per-person fresh-air allowance
+            (${CFG.PHYSICS.OCCUPANT_FRESH_AIR_LPS} L/s/person) — an order-of-magnitude guideline, not a specific
+            ventilation-code compliance calculation.</li>
             <li>PCM modelled via elevated apparent specific heat over its melt band.</li>
-            <li>Weather is a live 7-day forecast average (Open-Meteo) with real 20-year solar/temperature climatology (NASA POWER) — a forecast/climatology blend, never a field measurement.</li>
+            <li>Weather is a live 7-day forecast average (Open-Meteo) with real 20-year solar/temperature climatology
+            (NASA POWER) and real elevation (Open-Meteo Elevation API) — a forecast/climatology blend, never a field
+            measurement. A network hiccup falls back to cached data, clearly labelled as cached or stale — never
+            silently shown as live.</li>
+            <li>Thermal Comfort Score is a custom, project-defined weighted index — not PMV/PPD or any other
+            recognised thermal-comfort standard. Comfort-zone colour bands (18–27°C etc.) are a simplified
+            temperature-only proxy; real comfort also depends on humidity, air speed, and clothing.</li>
+            <li>Material costs are a materials + installation + waste-factor planning estimate — not sourced from a
+            CPWD/state PWD Schedule of Rates or a vendor quotation.</li>
+            <li>Expected model accuracy has not been formally quantified against field measurements — no
+            instrumented-shelter dataset exists yet. Field validation is identified as future work (see Validation).</li>
           </ul>
         </div>
       </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3>Reliability Layer</h3>
+        <p class="hint" style="margin-bottom:8px;">Every external API call (Open-Meteo, NASA POWER, elevation) goes through a shared reliability layer so a slow or unreachable network degrades gracefully instead of freezing the UI:</p>
+        <ul class="assumption-list">
+          <li>Request timeout: ${(CFG.RELIABILITY.TIMEOUT_MS/1000).toFixed(0)}s per attempt.</li>
+          <li>Retry: up to ${CFG.RELIABILITY.MAX_RETRIES} retries with exponential backoff.</li>
+          <li>Circuit breaker: after ${CFG.RELIABILITY.CIRCUIT_BREAKER_FAILURE_THRESHOLD} consecutive failures, a source is skipped for ${(CFG.RELIABILITY.CIRCUIT_BREAKER_COOLDOWN_MS/1000).toFixed(0)}s rather than retried immediately.</li>
+          <li>Fallback chain: live fetch → fresh cache → stale cache → a clear error message. The data-source badge always reflects which tier actually served the number.</li>
+          <li>Every simulation input is validated (positive dimensions/thickness, valid comfort range, valid coordinates) before it reaches the physics solver, with a specific on-screen message instead of a crash.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3>Data Source Transparency</h3>
+        <div class="table-wrap"><table>
+          <tr><th>Metric</th><th>Source</th></tr>
+          <tr><td>Hourly ambient temperature, solar irradiance, wind, humidity, cloud cover, precipitation</td><td>Real data — Open-Meteo (live 7-day forecast average; cache/stale-cache fallback honestly labelled)</td></tr>
+          <tr><td>Annual solar potential, 20-yr climatology, monthly solar/temperature</td><td>Real data — NASA POWER (2001–2020 climatology)</td></tr>
+          <tr><td>Elevation</td><td>Real data — Open-Meteo Elevation API (SRTM-derived)</td></tr>
+          <tr><td>Indoor temperature, heat flows, comfort score, solar utilization, heat retention</td><td>Model prediction — this app's RC thermal engine</td></tr>
+          <tr><td>Recommended design, candidate scores, sensitivity impacts</td><td>Model prediction — this app's optimizer</td></tr>
+          <tr><td>Material thermal / cost / sustainability properties</td><td>Engineering database reference values — editable, not lab-tested, not CPWD/PWD SOR-sourced</td></tr>
+          <tr><td>Validation error metrics (MAE/RMSE/MAPE/R²)</td><td>Real math, run against user-provided measurements (placeholder rows until field data exists)</td></tr>
+        </table></div>
+      </div>
+
       <div class="card" style="margin-top:16px;">
         <h3>Project</h3>
         <div class="form-row"><label>Project name</label><input id="projNameInput" value="${U.esc(s.project.name)}"></div>
@@ -309,5 +412,7 @@ window.UI = window.UI || {};
         STORE.reset(); window.APP.render();
       }
     }, root);
+    U.on("#themeLight", "click", () => { STORE.setTheme("LIGHT"); window.APP.applyTheme(); window.APP.render(); }, root);
+    U.on("#themeDark", "click", () => { STORE.setTheme("DARK"); window.APP.applyTheme(); window.APP.render(); }, root);
   };
 })();
