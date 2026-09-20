@@ -340,7 +340,7 @@ window.UI = window.UI || {};
           await STORE.loadCustomLocation(lat, lon, label);
         }
         window.APP.render();
-        window.APP.toast(near ? `Weather loaded (${near.name}).` : "Weather loaded for custom coordinates.");
+        window.APP.toast(`Weather loaded (${near ? near.name : STORE.get().location.label}).`);
       } catch (e) {
         if (statusEl) statusEl.textContent = "";
         alert("Could not fetch live weather: " + e.message + "\n\nCheck your internet connection and try again.");

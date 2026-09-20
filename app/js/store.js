@@ -247,11 +247,19 @@ window.APP_STORE = (function () {
   // its locationId argument.
   async function loadCustomLocation(lat, lon, label, opts) {
     const climate = await window.APP_WEATHER.fetchOpenMeteo(lat, lon, opts);
-    const customLabel = label && label.trim() ? label.trim() : `Custom location (${lat.toFixed(3)}, ${lon.toFixed(3)})`;
+    const trimmedLabel = label && label.trim() ? label.trim() : null;
+    // Best-effort reverse geocode (OpenStreetMap Nominatim, via util.js) so a
+    // custom point gets a real place name + region instead of a bare
+    // "Custom location (lat, lon)" placeholder. Always attempted (even with
+    // a user-typed label) so the region still gets filled in; never blocks
+    // on failure — reverseGeocode already catches its own errors and
+    // resolves to null.
+    const resolved = await window.U.reverseGeocode(lat, lon);
+    const customLabel = trimmedLabel || (resolved ? resolved.name : `Custom location (${lat.toFixed(3)}, ${lon.toFixed(3)})`);
     state.locationKey = "custom";
     state.location = {
       key: "custom", label: customLabel,
-      country: "", state: "", district: "",
+      country: "", state: (resolved && resolved.region) || "", district: "",
       latitude: lat, longitude: lon,
       elevationM: climate.elevationM != null ? climate.elevationM : null, // != null, not ||: a real 0m (sea level) is a valid elevation
       elevationSource: null,
