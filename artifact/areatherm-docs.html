@@ -336,7 +336,7 @@ flowchart TB
         <div class="mod"><div class="t">Dashboard</div><div class="s">4 primary metrics (comfort score, solar gain, heat loss, avg. indoor temp) with a collapsible "Detailed Analytics" section — simulation history, best design, breakdown.</div></div>
         <div class="mod"><div class="t">Guided Setup <span class="pill real">non-engineer</span></div><div class="s">5-step wizard: Location → Shelter → Materials → Comfort → Run. Sane presets throughout; shares state with the advanced screens.</div></div>
         <div class="mod"><div class="t">Location &amp; Climate</div><div class="s">10 reference locations, each loading live Open-Meteo weather + NASA POWER solar/temperature climatology — no hand-authored data anywhere. See §5.</div></div>
-        <div class="mod"><div class="t">Shelter Designer</div><div class="s">Geometry (rectangular/square/circular/dome/semi-circular), orientation/azimuth, openings, occupancy — with a live 2D top-down preview.</div></div>
+        <div class="mod"><div class="t">Shelter Designer</div><div class="s">Geometry (rectangular/square/circular/dome/semi-circular/L-shape), orientation/azimuth, openings, occupancy — with a live 2D top-down preview and an optional 3D box preview (vanilla Three.js, no build step).</div></div>
         <div class="mod"><div class="t">Materials</div><div class="s">Editable library across wall/roof/insulation/thermal-mass/window categories; add custom materials, all labelled "engineering database — verify for construction."</div></div>
         <div class="mod"><div class="t">Thermal Simulation</div><div class="s">Runs the hourly RC model (§6), indoor-vs-ambient-vs-comfort chart, heat-flow breakdown, and per-term "Explain Calculation" panels.</div></div>
         <div class="mod"><div class="t">Optimization</div><div class="s">Generates ~60 candidate designs, scores them on a configurable weighted formula (§7), ranks top 5, recommends the best, runs sensitivity analysis.</div></div>
@@ -351,25 +351,32 @@ flowchart TB
     <section id="data-integration">
       <h2><span class="num">§5</span> Live Weather &amp; Reference Locations</h2>
       <p class="lede">How real data gets into the model, and how it's kept honest.</p>
-      <p>Every one of the 10 reference locations gets its climate from two live sources working
-      together — no hand-authored or illustrative climate dataset ships with the app at all:</p>
+      <p>Every one of the 10 reference locations gets its climate from three live sources working
+      together — no hand-authored or illustrative climate dataset ships with the app at all — plus
+      custom lat/lon entry for any point on Earth:</p>
       <div class="callout real">
         <p><strong>✓ Open-Meteo — drives the simulation.</strong> A live 7-day forecast fetched
         directly from the browser (CORS-enabled, no API key, no backend needed). The hourly series
         across those 7 days is bucketed by hour-of-day and averaged into a "typical day" curve,
         which the thermal model consumes directly — smoothing out any single unusually cloudy or
-        windy day. Cached in <code>localStorage</code> for 7 days. Source: <code>app/js/weather-api.js</code>.</p>
+        windy day. Source: <code>app/js/weather-api.js</code>.</p>
       </div>
       <div class="callout real">
         <p><strong>✓ NASA POWER — real annual solar/temperature climatology.</strong> A 20-year
-        (2001–2020) climate normal for solar irradiance (GHI, DNI) and 2 m air temperature, fetched
-        separately from Open-Meteo. This is what backs the "annual solar potential" figure — a real
-        long-term average, not an extrapolation from the 7-day forecast. If this fetch fails, the
-        app falls back to a forecast-based extrapolation and labels it as such rather than silently
-        showing a number that looks more authoritative than it is. Source: <code>app/js/nasa-power.js</code>.</p>
+        (2001–2020) climate normal for solar irradiance (GHI, DNI, diffuse) and 2 m air temperature,
+        fetched separately from Open-Meteo. This is what backs the "annual solar potential" figure —
+        a real long-term average, not an extrapolation from the 7-day forecast. Source: <code>app/js/nasa-power.js</code>.</p>
+      </div>
+      <div class="callout real">
+        <p><strong>✓ Open-Meteo Elevation API — real elevation.</strong> SRTM-derived, no key
+        required, fetched independently of weather/climatology so a failure in one source never
+        blocks the others. Source: <code>app/js/elevation.js</code>.</p>
       </div>
       <p>Every screen showing climate-derived numbers displays a data-source badge naming exactly
-      which of these produced it, down to the specific fallback case above.</p>
+      which of these produced it. A shared reliability layer (<code>app/js/reliability.js</code>)
+      wraps every one of these calls with a request timeout, capped exponential-backoff retries, a
+      per-source circuit breaker, and a tiered live → fresh-cache → stale-cache fallback — the badge
+      always reflects which tier actually served the number, never silently shown as live.</p>
 
       <h4>The 10 reference locations</h4>
       <div class="table-wrap"><table>
@@ -573,12 +580,12 @@ flowchart TD
       </div>
       <h4>Not yet implemented</h4>
       <ul>
-        <li>Authentication / RBAC persistence, multi-user shared database (state is per-browser <code>localStorage</code> today)</li>
-        <li>ERA5/IMD archive integration — NASA POWER covers solar/temperature climatology; other historical variables (precipitation, detailed wind climatology) would need these</li>
-        <li>3D shelter preview (2D top-down schematic only)</li>
+        <li>Authentication / RBAC persistence, multi-user shared database (state is per-browser <code>localStorage</code> today, with multiple named projects and offline app-shell caching via a service worker)</li>
+        <li>ERA5/IMD archive integration — NASA POWER covers solar/temperature climatology and Open-Meteo's Elevation API covers real elevation; other historical variables (precipitation, detailed wind climatology) would need these</li>
+        <li>The 3D shelter preview is an illustrative box approximation — it doesn't yet model curved or L-shaped footprints, and door/window placement isn't tied to the per-face data model used elsewhere</li>
         <li>Server-side PDF rendering (browser print-to-PDF instead)</li>
         <li>ML surrogate model (architected in the source ARCHITECTURE.md, not trained — no labelled field data exists)</li>
-        <li>Simple/Advanced UI mode toggle exists but doesn't yet gate which fields are shown</li>
+        <li>The Imperial/metric toggle is display-only — the engine and every calculation stay metric internally</li>
       </ul>
       <h4>Disclosed modeling assumptions</h4>
       <p>Transient (hourly RC), not steady-state. Outside film coefficient fixed at 23 W/m²K,
@@ -616,14 +623,20 @@ flowchart TD
 &nbsp;&nbsp;app/ <span class="c">— the running prototype (deployed as-is)</span><br/>
 &nbsp;&nbsp;&nbsp;&nbsp;index.html<br/>
 &nbsp;&nbsp;&nbsp;&nbsp;css/styles.css<br/>
-&nbsp;&nbsp;&nbsp;&nbsp;js/config.js <span class="c">— branding, units, default weights</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;js/config.js <span class="c">— branding, units, default weights, reliability tuning</span><br/>
 &nbsp;&nbsp;&nbsp;&nbsp;js/data.js <span class="c">— locations, materials, comfort profiles (no climate data)</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;js/reliability.js <span class="c">— timeout/retry/circuit-breaker/cache, shared by every API client</span><br/>
 &nbsp;&nbsp;&nbsp;&nbsp;js/weather-api.js <span class="c">— Open-Meteo client (§5)</span><br/>
 &nbsp;&nbsp;&nbsp;&nbsp;js/nasa-power.js <span class="c">— NASA POWER climatology client (§5)</span><br/>
-&nbsp;&nbsp;&nbsp;&nbsp;js/engine.js <span class="c">— thermal model + optimizer (§6, §7)</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;js/elevation.js <span class="c">— Open-Meteo Elevation API client (§5)</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;js/engine.js <span class="c">— thermal model + occupancy heat model + optimizer (§6, §7)</span><br/>
 &nbsp;&nbsp;&nbsp;&nbsp;js/charts.js <span class="c">— inline-SVG chart renderer</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;js/export.js <span class="c">— dependency-free CSV export</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;js/validator.js <span class="c">— real-data validation against the simulation</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;js/shelter3d.js <span class="c">— optional 3D shelter preview (Three.js via import map)</span><br/>
 &nbsp;&nbsp;&nbsp;&nbsp;js/store.js <span class="c">— app state, schema-compatible</span><br/>
 &nbsp;&nbsp;&nbsp;&nbsp;js/util.js, ui-1.js, ui-2.js, ui-3.js, app.js <span class="c">— screens + router</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;sw.js <span class="c">— app-shell service worker (offline HTML/CSS/JS caching, never climate data)</span><br/>
 &nbsp;&nbsp;artifact/ <span class="c">— bundled single-file snapshots for sharing</span></div>
     </section>
 
