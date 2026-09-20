@@ -34,6 +34,24 @@ window.APP = (function () {
     if (badge) badge.hidden = navigator.onLine;
   }
 
+  // Global exception handler around every screen render: a bug in one
+  // screen shows a clean recoverable message instead of a blank page or a
+  // raw stack trace, and the real error still goes to the console for
+  // debugging. This is the last line of defence — most user-triggered
+  // actions (running a simulation, loading weather) validate their inputs
+  // and catch their own errors first with a more specific message.
+  function renderErrorCard(route, err) {
+    logError("render:" + route, err);
+    viewRoot().innerHTML = `
+      <div class="card callout-error">
+        <h3>Something went wrong displaying this screen</h3>
+        <p class="subtitle" style="margin-bottom:10px;">${U.esc(err && err.message ? err.message : String(err))}</p>
+        <p class="hint">Your project data has not been lost — it's saved automatically. Try
+        <a href="#/dashboard" style="color:var(--accent);font-weight:600;">returning to the Dashboard</a>
+        or reloading the page. If this keeps happening, check the browser console for details.</p>
+      </div>`;
+  }
+
   function render() {
     const route = currentRoute();
     try {
@@ -43,23 +61,11 @@ window.APP = (function () {
       document.body.classList.toggle("mode-advanced", STORE.get().mode === "ADVANCED");
       updateOnlineStatus(); // self-corrects the offline badge on every navigation, not just at startup
     } catch (e) {
-      logError("render:" + route, e);
-      viewRoot().innerHTML = `
-        <div class="card" style="max-width:520px;">
-          <h3>This screen couldn't be displayed</h3>
-          <p class="subtitle">Something went wrong rendering "${route}". Your project data is safe.</p>
-          <button class="btn btn-accent" id="errRecoverBtn">Go to Dashboard</button>
-        </div>`;
-      const btn = document.getElementById("errRecoverBtn");
-      if (btn) btn.addEventListener("click", () => navigate("dashboard"));
+      renderErrorCard(route, e);
     }
   }
 
   function navigate(route) { location.hash = "#/" + route; }
-
-  function applyTheme() {
-    document.documentElement.setAttribute("data-theme", STORE.get().theme === "dark" ? "dark" : "light");
-  }
 
   // opts: { duration (ms), actionLabel, onAction }
   function toast(msg, opts) {
@@ -68,7 +74,7 @@ window.APP = (function () {
     if (!t) {
       t = document.createElement("div");
       t.id = "appToast";
-      t.style.cssText = "position:fixed;bottom:20px;right:24px;background:#152233;color:#fff;padding:10px 16px;border-radius:8px;font-size:12.5px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s;display:flex;align-items:center;gap:12px;";
+      t.style.cssText = "position:fixed;bottom:20px;right:24px;background:#152233;color:#fff;padding:10px 16px;border-radius:8px;font-size:12.5px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s;display:flex;align-items:center;gap:12px;max-width:360px;";
       document.body.appendChild(t);
     }
     t.innerHTML = "";
@@ -84,13 +90,18 @@ window.APP = (function () {
     }
     t.style.opacity = "1";
     clearTimeout(t._timer);
-    t._timer = setTimeout(() => { t.style.opacity = "0"; }, opts.duration || 2600);
+    t._timer = setTimeout(() => { t.style.opacity = "0"; }, opts.duration || 3400);
   }
 
   function showExplain(title, bodyHtml) {
     document.getElementById("explainTitle").textContent = title;
     document.getElementById("explainBody").innerHTML = bodyHtml;
     document.getElementById("explainModal").classList.remove("hidden");
+  }
+
+  function applyTheme() {
+    const theme = STORE.get().theme || "LIGHT";
+    document.documentElement.setAttribute("data-theme", theme === "DARK" ? "dark" : "light");
   }
 
   // "Live Demo" fetches real weather (Open-Meteo + NASA POWER) for Leh —
@@ -104,16 +115,19 @@ window.APP = (function () {
       const s = STORE.get();
       s.design = STORE.defaultDesign();
       STORE.save();
+      const check = ENGINE.validateDesign(s.design);
+      if (!check.valid) throw new Error("Default design failed validation: " + check.errors.join(" "));
       const season = STORE.currentSeason();
       const result = ENGINE.runSimulation(s.design, season, s.simConfig);
       STORE.recordSimulation(result);
       const opt = ENGINE.runOptimization(s.design, season, s.simConfig, s.weights);
       STORE.recordOptimization(opt);
       navigate("evaluator");
-      toast("Live demo complete: real climate → simulation → optimization.");
+      const tierNote = s.climateSource && s.climateSource.tier !== "LIVE" ? ` (${s.climateSource.tier === "FRESH_CACHE" ? "served from cache" : "served from stale cache — network issue"})` : "";
+      toast("Live demo complete: real climate → simulation → optimization." + tierNote);
     } catch (e) {
       logError("runLiveDemo", e);
-      toast("Could not fetch live weather: " + e.message);
+      toast("Could not complete the live demo: " + e.message);
     } finally {
       if (btn) btn.disabled = false;
     }

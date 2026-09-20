@@ -1,6 +1,6 @@
 /* AreaTherm — Thermal Engine + Optimization Engine + Validation Stats.
    Pure functions only (no DOM access) so this module ports directly onto
-   a Spring Boot `thermal` / `optimization` service. See ARCHITECTURE.md §3-4
+   a Spring Boot `thermal` / `optimization` service. See ARCHITECTURE.md SS3-4
    for the physics and methodology behind every formula here. */
 
 window.APP_ENGINE = (function () {
@@ -37,6 +37,51 @@ window.APP_ENGINE = (function () {
     const abs = ((frontAzimuth + relativeOffsetDeg) % 360 + 360) % 360;
     const angle = abs <= 180 ? abs : 360 - abs;
     return orientationFactorFromAngle(angle);
+  }
+
+  // ---- Input validation ---------------------------------------------------
+  // Runs before a design ever reaches the RC solver. Catches the inputs that
+  // would otherwise propagate a NaN or a divide-by-zero into a blank chart
+  // or a crashed page: non-positive geometry, non-positive layer thickness,
+  // an inverted comfort band, out-of-range coordinates, negative counts.
+  // Returns { valid, errors: string[] } — never throws.
+  function validateDesign(design) {
+    const errors = [];
+    if (!design) { return { valid: false, errors: ["No shelter design is set."] }; }
+    const isRound = ["CIRCULAR", "DOME", "SEMI_CIRCULAR"].includes(design.shape);
+    if (isRound) {
+      if (!(design.diameter > 0)) errors.push("Diameter must be a positive number.");
+    } else {
+      if (!(design.length > 0)) errors.push("Length must be a positive number.");
+      if (!(design.width > 0) && design.shape !== "SQUARE") errors.push("Width must be a positive number.");
+    }
+    if (!(design.height > 0)) errors.push("Height must be a positive number.");
+    if (!design.wall || !(design.wall.thicknessMm > 0)) errors.push("Wall thickness must be a positive number.");
+    if (!design.roof || !(design.roof.thicknessMm > 0)) errors.push("Roof thickness must be a positive number.");
+    if (design.wall && design.wall.insulationThicknessMm != null && design.wall.insulationThicknessMm < 0) errors.push("Wall insulation thickness cannot be negative.");
+    if (design.roof && design.roof.insulationThicknessMm != null && design.roof.insulationThicknessMm < 0) errors.push("Roof insulation thickness cannot be negative.");
+    if (design.airLeakageAch != null && design.airLeakageAch < 0) errors.push("Air leakage (ACH) cannot be negative.");
+    if (design.occupancy != null && design.occupancy < 0) errors.push("Occupancy cannot be negative.");
+    (design.windows || []).forEach((w, i) => {
+      if (w.areaEach < 0) errors.push(`Window ${i + 1}: area cannot be negative.`);
+      if (w.count < 0) errors.push(`Window ${i + 1}: count cannot be negative.`);
+    });
+    (design.doors || []).forEach((d, i) => {
+      if (d.areaEach < 0) errors.push(`Door ${i + 1}: area cannot be negative.`);
+    });
+    if (design.thermalMass && design.thermalMass.massKg < 0) errors.push("Thermal mass cannot be negative.");
+    if (design.comfort) {
+      if (!Number.isFinite(design.comfort.min) || !Number.isFinite(design.comfort.max)) errors.push("Comfort range must be numeric.");
+      else if (design.comfort.min >= design.comfort.max) errors.push("Comfort minimum must be lower than comfort maximum.");
+    }
+    return { valid: errors.length === 0, errors };
+  }
+
+  function validateCoordinates(lat, lon) {
+    const errors = [];
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) errors.push("Latitude must be a number between -90 and 90.");
+    if (!Number.isFinite(lon) || lon < -180 || lon > 180) errors.push("Longitude must be a number between -180 and 180.");
+    return { valid: errors.length === 0, errors };
   }
 
   // ---- Geometry --------------------------------------------------------
@@ -126,6 +171,50 @@ window.APP_ENGINE = (function () {
     return g ? g.uValue : 2.8;
   }
 
+  // Shared by runSimulation and the Validation screen's steady-state
+  // predictor (ui-3.js) so the two never silently diverge on how
+  // ventilation is derived.
+  function windAdjustedInfiltrationAch(design, season) {
+    const windFactor = 1 + Math.min(0.6, (season.windMs || 2) * 0.06); // infiltration rises with wind, documented assumption
+    return (design.airLeakageAch || 0.6) * windFactor;
+  }
+  function ventUAFromAch(achV, volumeM3) {
+    return (achV * volumeM3 / 3600) * AIR_RHO * AIR_CP;
+  }
+
+  // ---- Occupancy heat model -----------------------------------------------
+  // Splits each occupant's total (sensible + latent) heat output into a
+  // sensible share (heats the indoor-air node below) and a latent share
+  // (illustrative moisture-generation figure only — this model has no
+  // humidity/psychrometric state node, so latent heat is reported, not
+  // simulated). See data.js ACTIVITY_LEVELS for the wattage/fraction table
+  // and its citation. "equipmentW" (design.internalHeatGainW) is any other
+  // internal gain (a heater, electronics, a lamp) — kept separate from
+  // occupant heat and assumed fully sensible.
+  function computeOccupancyHeat(design) {
+    const activity = DATA.activityLevelById(design.occupancyActivity || "SEATED");
+    const persons = Math.max(0, design.occupancy || 0);
+    const totalW = persons * activity.watts;
+    const sensibleW = totalW * activity.sensibleFrac;
+    const latentW = totalW - sensibleW;
+    const equipmentW = Math.max(0, design.internalHeatGainW || 0);
+    const totalSensibleW = sensibleW + equipmentW;
+    const latentKgPerHour = (latentW * 3600) / CFG.PHYSICS.WATER_LATENT_HEAT_J_KG;
+    return { activity, persons, totalW, sensibleW, latentW, equipmentW, totalSensibleW, latentKgPerHour };
+  }
+
+  // Additional ventilation (ACH) coupled to occupant count — a documented,
+  // order-of-magnitude fresh-air allowance (CFG.PHYSICS.OCCUPANT_FRESH_AIR_LPS
+  // per person), not a specific ventilation-code compliance calculation.
+  // This is what lets a higher occupant count show up as *both* more heat
+  // gained and more ventilation lost, instead of only ever a net positive.
+  function occupancyAchIncrement(persons, volumeM3) {
+    if (!(persons > 0) || !(volumeM3 > 0)) return 0;
+    const lps = persons * CFG.PHYSICS.OCCUPANT_FRESH_AIR_LPS;
+    const m3PerHour = lps * 3.6; // 1 L/s = 3.6 m3/h
+    return m3PerHour / volumeM3;
+  }
+
   // ---- Diurnal ambient temperature & solar irradiance -------------------
   // Two drivers are supported: direct interpolation over a real 24-point
   // hourly curve (the normal path — live data from weather-api.js), and a
@@ -177,8 +266,15 @@ window.APP_ENGINE = (function () {
     const windowArea = windowGroups.reduce((s, w) => s + w.totalArea, 0);
     const netWallArea = Math.max(0, geom.wallArea - windowArea - doorArea);
 
-    const windFactor = 1 + Math.min(0.6, (season.windMs || 2) * 0.06); // infiltration rises with wind
-    const ach = (design.airLeakageAch || 0.6) * windFactor;
+    const occ = computeOccupancyHeat(design);
+    const infiltrationAch = windAdjustedInfiltrationAch(design, season);
+    const occupancyAch = occupancyAchIncrement(occ.persons, geom.volume);
+    const ach = infiltrationAch + occupancyAch;
+    // Constant for the whole run (don't depend on the timestep) — hoisted
+    // out of the hourly loop below rather than recomputed every iteration.
+    const infiltrationUA = ventUAFromAch(infiltrationAch, geom.volume);
+    const occupancyVentUA = ventUAFromAch(occupancyAch, geom.volume);
+    const ventUA = infiltrationUA + occupancyVentUA;
 
     const tm = design.thermalMass;
     let massActive = !!(tm && tm.massKg > 0);
@@ -189,6 +285,11 @@ window.APP_ENGINE = (function () {
 
     const cAir = geom.volume * AIR_RHO * AIR_CP * CFG.PHYSICS.FURNISHING_CAPACITANCE_FACTOR;
 
+    // Material lookups are constant for the whole run — hoisted out of the
+    // hourly loop below rather than re-looked-up every iteration.
+    const wallMat = DATA.materialById(design.wall.materialId) || { absorptivity: 0.6 };
+    const roofMat = DATA.materialById(design.roof.materialId) || { absorptivity: 0.6 };
+
     const dtSec = (simConfig.timeStepMinutes || 60) * 60;
     const stepsPerDay = Math.round(24 * 3600 / dtSec);
     const totalSteps = stepsPerDay * (simConfig.days || 1);
@@ -197,8 +298,8 @@ window.APP_ENGINE = (function () {
     let tMass = tAir;
     const series = [];
     const agg = { solarKwh: 0, wallLossKwh: 0, roofLossKwh: 0, floorLossKwh: 0, openingCondLossKwh: 0,
-      ventLossKwh: 0, massExchangeKwh: 0, internalKwh: 0, comfortSteps: 0, heatingReqKwh: 0, coolingReqKwh: 0,
-      incidentOnWindowKwh: 0 };
+      ventLossKwh: 0, occupancyVentLossKwh: 0, massExchangeKwh: 0, internalKwh: 0, occupantSensibleKwh: 0,
+      equipmentKwh: 0, comfortSteps: 0, heatingReqKwh: 0, coolingReqKwh: 0, incidentOnWindowKwh: 0 };
 
     // Implicit (backward-Euler) update: unconditionally stable for hourly RC
     // building simulation, unlike explicit Euler which diverges here because
@@ -211,8 +312,7 @@ window.APP_ENGINE = (function () {
       const tAmb = ambientTempAt(season, hourDecimal);
       const gHoriz = solarIrradianceAt(season, hourDecimal);
 
-      // Sol-air temps per face (opaque)
-      const wallMat = DATA.materialById(design.wall.materialId) || { absorptivity: 0.6 };
+      // Sol-air temps per face (opaque) — wallMat/roofMat hoisted above the loop
       let wallUA = 0, wallRefSum = 0;
       geom.faces.forEach(f => {
         const gFace = gHoriz * f.factor;
@@ -220,7 +320,6 @@ window.APP_ENGINE = (function () {
         wallUA += uWall * f.areaM2;
         wallRefSum += uWall * f.areaM2 * tSolAir;
       });
-      const roofMat = DATA.materialById(design.roof.materialId) || { absorptivity: 0.6 };
       const tSolAirRoof = tAmb + (roofMat.absorptivity * gHoriz) / H_O;
       const roofUA = uRoof * geom.roofArea, roofRef = roofUA * tSolAirRoof;
       const tGround = design.groundTempC ?? (season.tMin + season.tMax) / 2;
@@ -235,8 +334,8 @@ window.APP_ENGINE = (function () {
       });
       const windowCondRef = windowCondUA * tAmb;
       const doorUA = 1.8 * doorArea, doorRef = doorUA * tAmb; // typical insulated door U~1.8 W/m2K, documented assumption
-      const ventUA = (ach * geom.volume / 3600) * AIR_RHO * AIR_CP, ventRef = ventUA * tAmb;
-      const qInternal = design.internalHeatGainW || 0;
+      const ventRef = ventUA * tAmb; // ventUA (infiltration + occupancy) hoisted above the loop — constant for the run
+      const qInternal = occ.totalSensibleW; // sensible-only: occupant sensible share + equipment gain
       const massUA = massActive ? H_MASS * massArea : 0, massRef = massUA * tMass;
 
       const totalUA = wallUA + roofUA + floorUA + windowCondUA + doorUA + ventUA + massUA;
@@ -250,6 +349,7 @@ window.APP_ENGINE = (function () {
       const qWindowCond = windowCondUA * nextTair - windowCondRef;
       const qDoorCond = doorUA * nextTair - doorRef;
       const qVent = ventUA * nextTair - ventRef;
+      const qVentOccupancy = occupancyVentUA * (nextTair - tAmb); // exact linear partition of qVent
       const qMassExchange = massUA * (nextTair - tMass);
 
       let nextTmass = tMass;
@@ -266,7 +366,7 @@ window.APP_ENGINE = (function () {
       const inComfort = nextTair >= design.comfort.min && nextTair <= design.comfort.max;
       if (inComfort) agg.comfortSteps++;
       if (nextTair < design.comfort.min) {
-        agg.heatingReqKwh += ((uWall * geom.wallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + qVentUA(ach, geom.volume)) * (design.comfort.min - nextTair) * dtSec) / 3.6e6;
+        agg.heatingReqKwh += ((uWall * geom.wallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + ventUA) * (design.comfort.min - nextTair) * dtSec) / 3.6e6;
       }
       if (nextTair > design.comfort.max) {
         agg.coolingReqKwh += ((uWall * geom.wallArea + uRoof * geom.roofArea) * (nextTair - design.comfort.max) * dtSec) / 3.6e6;
@@ -286,15 +386,16 @@ window.APP_ENGINE = (function () {
       agg.floorLossKwh += Math.max(0, (qFloor * dtSec) / 3.6e6);
       agg.openingCondLossKwh += Math.max(0, ((qWindowCond + qDoorCond) * dtSec) / 3.6e6);
       agg.ventLossKwh += Math.max(0, (qVent * dtSec) / 3.6e6);
+      agg.occupancyVentLossKwh += Math.max(0, (qVentOccupancy * dtSec) / 3.6e6);
       agg.massExchangeKwh += (qMassExchange * dtSec) / 3.6e6;
       agg.internalKwh += (qInternal * dtSec) / 3.6e6;
+      agg.occupantSensibleKwh += (occ.sensibleW * dtSec) / 3.6e6;
+      agg.equipmentKwh += (occ.equipmentW * dtSec) / 3.6e6;
       agg.incidentOnWindowKwh += (gHoriz * windowArea * dtSec) / 3.6e6;
 
       tAir = nextTair;
       tMass = nextTmass;
     }
-
-    function qVentUA(achV, volume) { return (achV * volume / 3600) * AIR_RHO * AIR_CP; }
 
     const totalDays = simConfig.days || 1;
     const comfortHoursPerDay = (agg.comfortSteps * (dtSec / 3600)) / totalDays;
@@ -316,6 +417,10 @@ window.APP_ENGINE = (function () {
     const comfortScore = clamp(0.5 * dayComfortPct + 0.5 * nightComfortPct, 0, 100);
     const energyDemandPerDay = (agg.heatingReqKwh + agg.coolingReqKwh) / totalDays;
     const energyAdequacyPct = clamp(100 - energyDemandPerDay * 1.5, 0, 100);
+    // NOTE: this is a custom, project-defined index (weighted blend of modelled
+    // comfort-hours%, heat-retention%, solar-utilization% and energy-adequacy%)
+    // — it is NOT the PMV/PPD comfort index or any other recognised thermal-
+    // comfort standard. See explainScore() / Settings for the exact weights.
     const thermalComfortScore = Math.round(
       0.45 * comfortScore + 0.25 * heatRetentionPct + 0.20 * solarUtilizationPct + 0.10 * energyAdequacyPct
     );
@@ -324,14 +429,34 @@ window.APP_ENGINE = (function () {
     const maxIndoor = Math.max(...series.map(s => s.tIndoor));
     const avgIndoor = round2(series.reduce((sum, s) => sum + s.tIndoor, 0) / series.length);
 
+    const occupantSensibleKwhPerDay = round2(agg.occupantSensibleKwh / totalDays);
+    const occupancyVentLossKwhPerDay = round2(agg.occupancyVentLossKwh / totalDays);
+    const netOccupancyEffectKwh = round2(occupantSensibleKwhPerDay - occupancyVentLossKwhPerDay);
+    let occupancyNote = null;
+    if (occ.persons > 0) {
+      occupancyNote = netOccupancyEffectKwh <= 0.05
+        ? `Ventilation increase from ${occ.persons} occupant(s) offsets most or all of their body-heat gain (net ${netOccupancyEffectKwh >= 0 ? "+" : ""}${netOccupancyEffectKwh} kWh/day) — a modelled trade-off, not an error.`
+        : `Occupants add more sensible heat than the occupancy-linked ventilation removes (net +${netOccupancyEffectKwh} kWh/day).`;
+    }
+
     return {
       geometry: geom, uValues: { wall: uWall, roof: uRoof, floor: uFloor },
       netWallArea, windowArea, doorArea, series,
+      ach: { infiltration: round2(infiltrationAch), occupancy: round2(occupancyAch), total: round2(ach) },
+      occupancy: {
+        persons: occ.persons, activityLabel: occ.activity.label, totalW: round2(occ.totalW),
+        sensibleW: round2(occ.sensibleW), latentW: round2(occ.latentW), equipmentW: round2(occ.equipmentW),
+        latentKgPerHour: Math.round(occ.latentKgPerHour * 1000) / 1000,
+        sensibleKwhPerDay: occupantSensibleKwhPerDay, occupancyVentLossKwhPerDay,
+        netOccupancyEffectKwh, note: occupancyNote
+      },
       daily: {
         solarKwh: round2(agg.solarKwh / totalDays), wallLossKwh: round2(agg.wallLossKwh / totalDays),
         roofLossKwh: round2(agg.roofLossKwh / totalDays), floorLossKwh: round2(agg.floorLossKwh / totalDays),
         openingLossKwh: round2(agg.openingCondLossKwh / totalDays), ventLossKwh: round2(agg.ventLossKwh / totalDays),
+        occupancyVentLossKwh: occupancyVentLossKwhPerDay,
         massExchangeKwh: round2(agg.massExchangeKwh / totalDays), internalKwh: round2(agg.internalKwh / totalDays),
+        equipmentKwh: round2(agg.equipmentKwh / totalDays), occupantSensibleKwh: occupantSensibleKwhPerDay,
         totalLossKwh: round2(totalLossKwh / totalDays),
         netKwh: round2((agg.solarKwh + agg.internalKwh - totalLossKwh) / totalDays),
         heatingReqKwh: round2(agg.heatingReqKwh / totalDays), coolingReqKwh: round2(agg.coolingReqKwh / totalDays)
@@ -353,6 +478,9 @@ window.APP_ENGINE = (function () {
   function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 
   // ---- Estimated cost (simple materials-based estimate, INR) -------------
+  // Materials + installation + a waste factor only — no labour/transport
+  // multiplier, and NOT sourced from a CPWD/state PWD Schedule of Rates.
+  // See data.js MATERIALS header and the Materials screen disclaimer.
   function estimateCost(design) {
     const geom = computeGeometry(design);
     const wallMat = DATA.materialById(design.wall.materialId) || {};
@@ -370,6 +498,8 @@ window.APP_ENGINE = (function () {
       const m = DATA.materialById(design.thermalMass.materialId) || {};
       cost += (m.costPerKg || 5) * design.thermalMass.massKg;
     }
+    const WASTE_FACTOR = 0.10; // typical, documented assumption
+    cost *= (1 + WASTE_FACTOR);
     return Math.round(cost);
   }
 
@@ -450,10 +580,11 @@ window.APP_ENGINE = (function () {
     const energyRange = { min: Math.min(...demands), max: Math.max(...demands) };
     evaluated.forEach(e => { e.score = scoreCandidate(e.result, e.cost, weights, costRange, energyRange); });
     evaluated.sort((a, b) => b.score.total - a.score.total);
+    evaluated.forEach((e, i) => { e.rank = i + 1; });
     const top = evaluated.slice(0, 5);
     const labels = ["A", "B", "C", "D", "E"];
     top.forEach((e, i) => { e.label = labels[i]; e.isRecommended = i === 0; });
-    return { candidatesEvaluated: evaluated.length, top, recommended: top[0] };
+    return { candidatesEvaluated: evaluated.length, top, recommended: top[0], all: evaluated };
   }
 
   function sensitivityAnalysis(baseDesign, season, simConfig, weights) {
@@ -502,7 +633,10 @@ window.APP_ENGINE = (function () {
   return {
     computeGeometry, wallUValue, roofUValue, floorUValue, windowUValue,
     ambientTempAt, solarIrradianceAt, runSimulation, estimateCost,
+    computeOccupancyHeat, occupancyAchIncrement,
+    windAdjustedInfiltrationAch, ventUAFromAch,
     generateCandidates, scoreCandidate, runOptimization, sensitivityAnalysis,
-    validationStats, orientationFactorFromAngle, faceFactor, frontAzimuthOf
+    validationStats, validateDesign, validateCoordinates,
+    orientationFactorFromAngle, faceFactor, frontAzimuthOf
   };
 })();

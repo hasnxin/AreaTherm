@@ -1,31 +1,42 @@
-/* AreaTherm — reference locations, material library, comfort profiles.
-   Climate data is never hand-authored here — every location's numbers
-   come from a live fetch (Open-Meteo + NASA POWER, see weather-api.js /
-   nasa-power.js). Only the location catalog itself (name/coordinates/
-   elevation, below) is static, since it's just a site-selection shortcut. */
+/* AreaTherm — reference locations, material library, comfort profiles,
+   occupancy activity levels. Climate data is never hand-authored here —
+   every location's numbers come from a live fetch (Open-Meteo + NASA POWER,
+   see weather-api.js / nasa-power.js). Only the location catalog itself
+   (name/coordinates/elevation, below) is static, since it's just a
+   site-selection shortcut — elevation is refined at runtime by a real
+   lookup (app/js/elevation.js) rather than trusted as-is. */
 
 window.APP_DATA = (function () {
 
   // ---- Predefined reference locations (for live Open-Meteo + NASA POWER lookup) ----
   // Coordinates/elevations are reference values for site selection, not
-  // survey-grade. Every location loads LIVE weather — no illustrative/demo
-  // climate data ships with the app.
+  // survey-grade — re-checked against general map sources on 2026-09-20 and
+  // corrected where the previous entry was off by a meaningful distance (see
+  // git history for the deltas). Every location loads LIVE weather — no
+  // illustrative/demo climate data ships with the app. Elevation shown in the
+  // app always prefers the live Elevation-API value (elevation.js) over this
+  // static figure when the fetch succeeds.
   const PREDEFINED_LOCATIONS = [
-    { id: "leh", name: "Leh, Ladakh", latitude: 34.1526, longitude: 77.5771, elevationM: 3500, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "kargil", name: "Kargil, Ladakh", latitude: 34.56, longitude: 76.11, elevationM: 2676, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "keylong", name: "Keylong, Himachal Pradesh", latitude: 32.22, longitude: 77.05, elevationM: 3170, region: "Himachal Pradesh", category: "High Himalaya" },
-    { id: "munsiyari", name: "Munsiyari, Uttarakhand", latitude: 30.05, longitude: 80.20, elevationM: 2298, region: "Uttarakhand", category: "High Himalaya" },
-    { id: "dras", name: "Drass, Ladakh", latitude: 34.42, longitude: 75.57, elevationM: 3280, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "srinagar", name: "Srinagar, J&K", latitude: 34.08, longitude: 75.34, elevationM: 1730, region: "Jammu & Kashmir (UT)", category: "Temperate valley" },
-    { id: "pune", name: "Pune, Maharashtra", latitude: 18.52, longitude: 73.85, elevationM: 625, region: "Maharashtra", category: "Tropical plateau" },
+    { id: "leh", name: "Leh, Ladakh", latitude: 34.15, longitude: 77.58, elevationM: 3500, region: "Ladakh (UT)", category: "Cold desert" },
+    { id: "kargil", name: "Kargil, Ladakh", latitude: 34.55, longitude: 76.13, elevationM: 2676, region: "Ladakh (UT)", category: "Cold desert" },
+    { id: "keylong", name: "Keylong, Himachal Pradesh", latitude: 32.57, longitude: 77.03, elevationM: 3080, region: "Himachal Pradesh", category: "High Himalaya" },
+    { id: "munsiyari", name: "Munsiyari, Uttarakhand", latitude: 30.07, longitude: 80.24, elevationM: 2298, region: "Uttarakhand", category: "High Himalaya" },
+    { id: "dras", name: "Drass, Ladakh", latitude: 34.43, longitude: 75.75, elevationM: 3280, region: "Ladakh (UT)", category: "Cold desert" },
+    { id: "srinagar", name: "Srinagar, J&K", latitude: 34.08, longitude: 74.80, elevationM: 1590, region: "Jammu & Kashmir (UT)", category: "Temperate valley" },
+    { id: "pune", name: "Pune, Maharashtra", latitude: 18.52, longitude: 73.88, elevationM: 560, region: "Maharashtra", category: "Tropical plateau" },
     { id: "bareilly", name: "Bareilly, Uttar Pradesh", latitude: 28.37, longitude: 79.43, elevationM: 168, region: "Uttar Pradesh", category: "Gangetic plain" },
-    { id: "nagpur", name: "Nagpur, Maharashtra", latitude: 21.14, longitude: 79.08, elevationM: 310, region: "Maharashtra", category: "Tropical plain" },
-    { id: "shimla", name: "Shimla, Himachal Pradesh", latitude: 31.77, longitude: 77.10, elevationM: 2159, region: "Himachal Pradesh", category: "Mid Himalaya" }
+    { id: "nagpur", name: "Nagpur, Maharashtra", latitude: 21.15, longitude: 79.09, elevationM: 310, region: "Maharashtra", category: "Tropical plain" },
+    { id: "shimla", name: "Shimla, Himachal Pradesh", latitude: 31.10, longitude: 77.17, elevationM: 2200, region: "Himachal Pradesh", category: "Mid Himalaya" }
   ];
 
   // ---- Material library ---------------------------------------------
   // All values are engineering-database reference values (typical/handbook
-  // ranges) — NOT independently lab-tested for this project. Editable.
+  // ranges) — NOT independently lab-tested for this project, and NOT sourced
+  // from a CPWD / state PWD Schedule of Rates. Editable. Costs are a rough
+  // materials-only planning estimate (material + installation + a waste
+  // factor) — replace with an actual SOR line item or vendor quotation
+  // before using any figure here in a real costing decision. Nothing in
+  // this file is labelled "verified".
   const MATERIALS = [
     // WALL
     { id: "wall_concrete", category: "WALL", name: "Concrete (dense)", density: 2400, k: 1.40, cp: 880, defaultThicknessMm: 200, absorptivity: 0.65, reflectivity: 0.35, emissivity: 0.90, costPerM2: 1400, sustainability: "LOW" },
@@ -76,39 +87,28 @@ window.APP_DATA = (function () {
     { id: "human", label: "Human Occupancy", min: 18, max: 27 }
   ];
 
-  // Clothing insulation (clo) and activity (met) presets, ASHRAE-55-style.
-  // minShiftC is a documented heuristic (~3-4°C per clo / met step,
-  // standard building-comfort literature), applied only to the LOWER
-  // comfort bound — the lever that matters for a cold-region passive
+  // Clothing insulation (clo) and comfort-band activity (met) presets,
+  // ASHRAE-55-style. minShiftC is a documented heuristic (~3-4°C per clo /
+  // met step, standard building-comfort literature), applied only to the
+  // LOWER comfort bound — the lever that matters for a cold-region passive
   // shelter. This is a modelling assumption, not a measured PMV/PPD
   // result, and is disclosed as such wherever it's shown in the UI.
+  // Distinct from the occupancy-heat ACTIVITY_LEVELS below (met/comfort-
+  // shift vs. watts/sensible-latent split are two different concepts that
+  // happen to both key off "how active is the occupant").
   const CLOTHING_LEVELS = [
     { id: "LIGHT", label: "Light indoor clothing", clo: 0.5, minShiftC: 3 },
     { id: "TYPICAL", label: "Typical indoor clothing", clo: 1.0, minShiftC: 0 },
     { id: "WINTER", label: "Heavy winter clothing", clo: 1.5, minShiftC: -3 },
     { id: "ARCTIC", label: "Expedition / arctic clothing", clo: 2.2, minShiftC: -6 }
   ];
-  const ACTIVITY_LEVELS = [
+  const COMFORT_ACTIVITY_LEVELS = [
     { id: "RESTING", label: "Resting / sleeping", met: 0.8, minShiftC: 1 },
     { id: "SEATED", label: "Seated / light desk work", met: 1.0, minShiftC: 0 },
     { id: "ACTIVE", label: "Light physical activity", met: 1.4, minShiftC: -2 }
   ];
   // ASHRAE-55 commonly cited acceptable indoor RH band — informational only.
   const HUMIDITY_COMFORT_BAND = { min: 30, max: 70 };
-
-  // Per-person metabolic heat output by activity, representative figures
-  // from the ASHRAE Fundamentals Handbook Ch.9 ("Heat and Moisture Given
-  // Off by Human Beings") / ISO 8996 metabolic-rate tables — feeds the
-  // thermal engine's internal-gain term as occupancy x wattage, replacing
-  // a flat manual number.
-  const OCCUPANCY_ACTIVITY_LEVELS = [
-    { id: "SLEEPING", label: "Sleeping", watts: 85 },
-    { id: "RESTING", label: "Resting / seated", watts: 120 },
-    { id: "LIGHT", label: "Light activity (walking, tasks)", watts: 180 },
-    { id: "MODERATE", label: "Moderate (light work)", watts: 240 },
-    { id: "HEAVY", label: "Heavy (exercise / manual labor)", watts: 360 }
-  ];
-  function occupancyActivityById(id) { return OCCUPANCY_ACTIVITY_LEVELS.find(a => a.id === id) || OCCUPANCY_ACTIVITY_LEVELS[1]; }
 
   // Regional material availability — a rule-based estimate, not a
   // supplier directory. Derived from a material's existing sustainability
@@ -137,21 +137,35 @@ window.APP_DATA = (function () {
         : `Manufactured/imported material — estimated ${leadTimeDays}-day lead time and ${transportMultiplier}× transport cost multiplier for this site's remoteness.`
     };
   }
-  function occupancyHeatWatts(occupancy, activityId) {
-    return Math.round((occupancy || 0) * occupancyActivityById(activityId).watts);
-  }
-
   function clothingLevelById(id) { return CLOTHING_LEVELS.find(c => c.id === id) || CLOTHING_LEVELS[1]; }
-  function activityLevelById(id) { return ACTIVITY_LEVELS.find(a => a.id === id) || ACTIVITY_LEVELS[1]; }
+  function comfortActivityLevelById(id) { return COMFORT_ACTIVITY_LEVELS.find(a => a.id === id) || COMFORT_ACTIVITY_LEVELS[1]; }
 
   // Effective lower comfort bound = user's base min, shifted by how
   // insulated/active the occupants are. Feeds directly into the thermal
   // engine's comfort.min (engine.js is unmodified — it just reads whatever
   // comfort.min/max it's given).
   function effectiveComfortMin(baseMin, clothingId, activityId, max) {
-    const shifted = baseMin + clothingLevelById(clothingId).minShiftC + activityLevelById(activityId).minShiftC;
+    const shifted = baseMin + clothingLevelById(clothingId).minShiftC + comfortActivityLevelById(activityId).minShiftC;
     return Math.min(shifted, max - 1);
   }
+
+  // ---- Occupancy activity levels -----------------------------------------
+  // "watts" is the TOTAL (sensible + latent) heat output per person — the
+  // order of magnitude documented in the ASHRAE Fundamentals Handbook, Ch. 9
+  // ("Heat and Moisture Given Off by Human Beings") and ISO 8996 metabolic-
+  // rate tables. "sensibleFrac" (share of that total which heats the air
+  // rather than becoming moisture) uses simplified fixed fractions that
+  // approximate the general trend in those references — sensible share
+  // falls as activity rises — not a literal reproduction of their exact
+  // per-temperature table values. See Settings -> Assumptions. Distinct
+  // from COMFORT_ACTIVITY_LEVELS above (comfort-band shift, not heat gain).
+  const ACTIVITY_LEVELS = [
+    { id: "SLEEPING", label: "Sleeping", watts: 85, sensibleFrac: 0.90 },
+    { id: "SEATED", label: "Resting / Seated", watts: 120, sensibleFrac: 0.75 },
+    { id: "LIGHT", label: "Light activity", watts: 180, sensibleFrac: 0.65 },
+    { id: "MODERATE", label: "Moderate activity", watts: 240, sensibleFrac: 0.55 },
+    { id: "HEAVY", label: "Heavy activity", watts: 360, sensibleFrac: 0.45 }
+  ];
 
   function materialsByCategory(cat) {
     return MATERIALS.filter(m => m.category === cat);
@@ -162,6 +176,9 @@ window.APP_DATA = (function () {
 
   function predefinedLocationById(id) {
     return PREDEFINED_LOCATIONS.find(l => l.id === id);
+  }
+  function activityLevelById(id) {
+    return ACTIVITY_LEVELS.find(a => a.id === id) || ACTIVITY_LEVELS[1];
   }
 
   // Simple planar degree-distance (fine at this scale/precision — not a
@@ -179,10 +196,9 @@ window.APP_DATA = (function () {
 
   return {
     PREDEFINED_LOCATIONS, MATERIALS, COMFORT_PROFILES,
-    CLOTHING_LEVELS, ACTIVITY_LEVELS, HUMIDITY_COMFORT_BAND,
-    OCCUPANCY_ACTIVITY_LEVELS,
+    CLOTHING_LEVELS, COMFORT_ACTIVITY_LEVELS, ACTIVITY_LEVELS, HUMIDITY_COMFORT_BAND,
     materialsByCategory, materialById, predefinedLocationById, nearestPredefinedLocation,
-    clothingLevelById, activityLevelById, effectiveComfortMin,
-    occupancyActivityById, occupancyHeatWatts, materialAvailability
+    clothingLevelById, comfortActivityLevelById, activityLevelById, effectiveComfortMin,
+    materialAvailability
   };
 })();

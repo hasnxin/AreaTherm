@@ -10,9 +10,9 @@
   // hasn't loaded yet at this point in <head>.
   (function () {
     try {
-      var raw = localStorage.getItem("areatherm_state_v1");
-      var theme = raw ? (JSON.parse(raw).theme || "light") : "light";
-      document.documentElement.setAttribute("data-theme", theme === "dark" ? "dark" : "light");
+      var raw = localStorage.getItem("areatherm_state_v2") || localStorage.getItem("areatherm_state_v1");
+      var theme = raw ? (JSON.parse(raw).theme || "LIGHT") : "LIGHT";
+      document.documentElement.setAttribute("data-theme", theme === "DARK" ? "dark" : "light");
     } catch (e) { /* default light */ }
   })();
 </script>
@@ -67,7 +67,7 @@
           <button id="modeSimple" class="mode-btn active">Simple</button>
           <button id="modeAdvanced" class="mode-btn">Advanced</button>
         </div>
-        <div class="version-tag">thermal-engine v1.0.0</div>
+        <div class="version-tag">thermal-engine v1.1.0</div>
       </div>
     </aside>
     <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
@@ -102,10 +102,13 @@
   <script src="js/util.js"></script>
   <script src="js/config.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/reliability.js"></script>
   <script src="js/weather-api.js"></script>
   <script src="js/nasa-power.js"></script>
+  <script src="js/elevation.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/charts.js"></script>
+  <script src="js/export.js"></script>
   <script src="js/store.js"></script>
   <script src="js/validator.js"></script>
   <script src="js/ui-1.js"></script>
