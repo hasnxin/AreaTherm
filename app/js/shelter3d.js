@@ -26,7 +26,7 @@ export class Shelter3D {
   constructor(canvas) {
     if (!canvas) throw new Error("Shelter3D: a <canvas> element is required.");
     this.canvas = canvas;
-    this.params = { width: 6, length: 4, height: 3, doorCount: 1, windowCount: 2, wallColor: "#dfeef2", sunAngle: 135 };
+    this.params = { width: 6, length: 4, height: 3, doorCount: 1, windowCount: 2, windowFace: "FRONT", wallColor: "#dfeef2", sunAngle: 135 };
 
     this._initScene();
     this._initLights();
@@ -135,15 +135,16 @@ export class Shelter3D {
 
   /**
    * @param {{width:number, length:number, height:number, doorCount:number,
-   *          windowCount:number, wallColor:string, sunAngle:number}} params
+   *          windowCount:number, windowFace:('FRONT'|'BACK'|'LEFT'|'RIGHT'),
+   *          wallColor:string, sunAngle:number}} params
    */
   update(params) {
     this.params = { ...this.params, ...params };
-    const { width, length, height, doorCount, windowCount, wallColor, sunAngle } = this.params;
+    const { width, length, height, doorCount, windowCount, windowFace, wallColor, sunAngle } = this.params;
 
     this._rebuildBox(width, length, height);
     this.wallMaterial.color.set(wallColor);
-    this._rebuildOpenings(width, length, height, doorCount, windowCount);
+    this._rebuildOpenings(width, length, height, doorCount, windowCount, windowFace || "FRONT");
     this._positionSun(sunAngle, width, length, height);
 
     const maxDim = Math.max(width, length, height);
@@ -170,33 +171,54 @@ export class Shelter3D {
     this.wallMesh.position.set(0, height / 2, 0); // sits on the ground plane, not centred through it
   }
 
-  // Doors and windows are laid out along the front wall (−Z face), doors
-  // first then windows, evenly spaced with a slot each — a deliberately
-  // simple, general-purpose placement since this component isn't tied to
-  // AreaTherm's own per-face window/door data model.
-  _rebuildOpenings(width, length, height, doorCount, windowCount) {
+  // Doors always sit on the front (−Z) wall — this app's door data has no
+  // per-face field anywhere (the 2D preview discloses doors as "face not
+  // modeled" too), so front is a reasonable, consistent default. Windows
+  // use the same FRONT/BACK/LEFT/RIGHT face as the rest of the app (the
+  // Shelter Designer's "Window face" control and the 2D preview), evenly
+  // spaced along whichever wall that face maps to.
+  _rebuildOpenings(width, length, height, doorCount, windowCount, windowFace) {
     while (this.openingsGroup.children.length) {
       const child = this.openingsGroup.children.pop();
       child.geometry.dispose();
     }
-    const total = Math.max(0, doorCount) + Math.max(0, windowCount);
-    if (total === 0) return;
 
-    const slotW = width / (total + 1);
-    const doorW = Math.min(DOOR_SIZE.w, slotW * 0.7), doorH = Math.min(DOOR_SIZE.h, height * 0.85);
-    const winW = Math.min(WINDOW_SIZE.w, slotW * 0.7), winH = Math.min(WINDOW_SIZE.h, height * 0.35);
-    const z = -length / 2 - 0.02; // a hair proud of the wall face to avoid z-fighting
-
-    let slot = 1;
-    for (let i = 0; i < doorCount; i++, slot++) {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(doorW, doorH), this.doorMaterial);
-      mesh.position.set(-width / 2 + slotW * slot, doorH / 2, z);
-      this.openingsGroup.add(mesh);
+    if (doorCount > 0) {
+      const slotW = width / (doorCount + 1);
+      const doorW = Math.min(DOOR_SIZE.w, slotW * 0.7), doorH = Math.min(DOOR_SIZE.h, height * 0.85);
+      const z = -length / 2 - 0.02; // a hair proud of the wall face to avoid z-fighting
+      for (let i = 1; i <= doorCount; i++) {
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(doorW, doorH), this.doorMaterial);
+        mesh.position.set(-width / 2 + slotW * i, doorH / 2, z);
+        this.openingsGroup.add(mesh);
+      }
     }
-    for (let i = 0; i < windowCount; i++, slot++) {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(winW, winH), this.windowMaterial);
-      mesh.position.set(-width / 2 + slotW * slot, height * 0.55, z);
-      this.openingsGroup.add(mesh);
+
+    if (windowCount > 0) {
+      // Front/back walls run along X (span = width); left/right walls run
+      // along Z (span = length) and need the plane rotated 90° about Y so
+      // its face points outward (±X) instead of the default ±Z.
+      const onSideWall = windowFace === "LEFT" || windowFace === "RIGHT";
+      const span = onSideWall ? length : width;
+      const slotW = span / (windowCount + 1);
+      const winW = Math.min(WINDOW_SIZE.w, slotW * 0.7), winH = Math.min(WINDOW_SIZE.h, height * 0.35);
+      const winY = height * 0.55;
+      for (let i = 1; i <= windowCount; i++) {
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(winW, winH), this.windowMaterial);
+        const along = -span / 2 + slotW * i;
+        if (windowFace === "BACK") {
+          mesh.position.set(along, winY, length / 2 + 0.02);
+        } else if (windowFace === "LEFT") {
+          mesh.rotation.y = Math.PI / 2;
+          mesh.position.set(-width / 2 - 0.02, winY, along);
+        } else if (windowFace === "RIGHT") {
+          mesh.rotation.y = Math.PI / 2;
+          mesh.position.set(width / 2 + 0.02, winY, along);
+        } else { // FRONT
+          mesh.position.set(along, winY, -length / 2 - 0.02);
+        }
+        this.openingsGroup.add(mesh);
+      }
     }
   }
 

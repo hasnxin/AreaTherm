@@ -684,7 +684,7 @@ window.UI = window.UI || {};
             <h3>3D Preview <span class="tag tag-demo">illustrative — box approximation</span></h3>
             <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:8px; cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
-            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). ${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape) ? "Shown as a bounding box — this view doesn't yet model curved or L-shaped footprints." : ""}</p>
+            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Windows are shown on the "Window face" wall set below; the door is always on the front wall (its face isn't modeled elsewhere in the app either). ${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape) ? "Shown as a bounding box — this view doesn't yet model curved or L-shaped footprints." : ""}</p>
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>Derived Geometry <span class="tag tag-model">calculated</span></h3>
@@ -745,6 +745,7 @@ window.UI = window.UI || {};
         width: g.L, length: g.W || g.L, height: design.height || 3,
         doorCount: (design.doors || []).reduce((s, dr) => s + (dr.count || 0), 0),
         windowCount: (design.windows || []).reduce((s, w) => s + (w.count || 0), 0),
+        windowFace: (design.windows && design.windows[0] && design.windows[0].orientation) || "FRONT",
         wallColor: WALL_COLOR_BY_MATERIAL[wallMatId] || "#dfeef2",
         sunAngle: ENGINE.frontAzimuthOf(design)
       });
