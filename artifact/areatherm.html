@@ -257,6 +257,7 @@ td.num{font-family:var(--mono); text-align:right;}
 
 /* Data source badges */
 .data-badge{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:6px; margin:4px 0;}
+.data-badge[hidden]{display:none;} /* the display rule above otherwise beats the hidden attribute (same-origin author CSS always wins over the UA stylesheet's [hidden] rule) */
 .data-badge.real{background:var(--data-real-bg); color:var(--data-real-fg); border:1px solid var(--data-real-border);}
 .data-badge.illustrative{background:var(--data-illus-bg); color:var(--data-illus-fg); border:1px solid var(--data-illus-border);}
 
@@ -5825,6 +5826,12 @@ window.APP = (function () {
     window.addEventListener("online", updateOnlineStatus);
     window.addEventListener("offline", updateOnlineStatus);
     updateOnlineStatus();
+    // navigator.onLine can read stale/false for a brief instant during page
+    // startup in some sandboxed/embedded browser contexts, with no "online"
+    // event ever following (the browser never considered itself to have
+    // changed state) — a short delayed re-check clears a bogus offline
+    // badge instead of leaving it wrong until the next navigation.
+    setTimeout(updateOnlineStatus, 1500);
 
     // Mobile off-canvas sidebar (hamburger in the topbar, only visible <=860px).
     const sidebarEl = document.getElementById("sidebar");

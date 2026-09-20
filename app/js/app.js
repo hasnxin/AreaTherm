@@ -167,6 +167,12 @@ window.APP = (function () {
     window.addEventListener("online", updateOnlineStatus);
     window.addEventListener("offline", updateOnlineStatus);
     updateOnlineStatus();
+    // navigator.onLine can read stale/false for a brief instant during page
+    // startup in some sandboxed/embedded browser contexts, with no "online"
+    // event ever following (the browser never considered itself to have
+    // changed state) — a short delayed re-check clears a bogus offline
+    // badge instead of leaving it wrong until the next navigation.
+    setTimeout(updateOnlineStatus, 1500);
 
     // Mobile off-canvas sidebar (hamburger in the topbar, only visible <=860px).
     const sidebarEl = document.getElementById("sidebar");
