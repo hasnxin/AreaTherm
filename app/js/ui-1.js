@@ -263,7 +263,7 @@ window.UI = window.UI || {};
           <span id="fetchStatus" class="hint"></span>
         </div>
         <div id="locationMap" style="height:260px; border-radius:8px; margin-top:12px; z-index:0;"></div>
-        <p class="hint" style="margin-top:6px;">Click a pin to load that location's live weather. Map tiles © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:var(--accent);">OpenStreetMap</a> contributors.</p>
+        <p class="hint" style="margin-top:6px;">Click a pin to load that location's live weather. Map tiles © <a href="https://www.esri.com" target="_blank" rel="noopener" style="color:var(--accent);">Esri</a>.</p>
         <p class="hint" style="margin-top:10px;">Live weather from
         <a href="https://open-meteo.com" target="_blank" rel="noopener" style="color:var(--accent);">Open-Meteo</a>
         (no API key, cached 7 days) — a 7-day forecast averaged into a typical-day curve — plus real 20-year
@@ -354,8 +354,17 @@ window.UI = window.UI || {};
       const mapEl = U.qs("#locationMap", root);
       if (!mapEl || !window.L) return; // Leaflet failed to load (offline/CDN blocked) — map is optional, rest of the page works without it
       const map = window.L.map(mapEl, { scrollWheelZoom: false }).setView([22, 79], 5);
-      window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors", maxZoom: 12
+      // Esri's free ArcGIS Online basemap, not OSM's own tile.openstreetmap.org
+      // (that raw tile server's usage policy forbids embedding it in a
+      // distributed app without prior permission and rate-limits/blocks
+      // automated or high-volume traffic — see osm.wiki/Blocked) and not
+      // CARTO's basemaps either (their free raster tiles now require a signed-
+      // up API key). Esri's service needs no key, is CORS-enabled for exactly
+      // this kind of third-party embedding, and is backed by infrastructure
+      // that comfortably absorbs a live-demo audience.
+      window.L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+        attribution: "Tiles &copy; Esri — Esri, HERE, Garmin, USGS, EPA",
+        maxZoom: 12
       }).addTo(map);
       DATA.PREDEFINED_LOCATIONS.forEach(l => {
         const marker = window.L.marker([l.latitude, l.longitude]).addTo(map);
