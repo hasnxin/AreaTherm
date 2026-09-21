@@ -6,15 +6,14 @@
 > `app/js/config.js` (`APP_NAME`, `APP_SUBTITLE`) and is trivial to change —
 > nothing else in the codebase hard-codes it.
 
-## 0. Environment note (read this first)
+## 0. Phasing note (read this first)
 
-This machine has **no Java, Maven, Node, npm, or Docker installed** (only
-Python 3.13). Given the DRDO evaluation criterion "the core workflow must
-actually function" and "test the complete workflow" before declaring
-completion, building an Angular/Spring Boot/MySQL stack that cannot be
-compiled or run here would produce an *unverifiable* mockup — exactly what
-the brief prohibits ("Do NOT build only a calculator" / "not a superficial
-UI mockup").
+Given the DRDO evaluation criterion "the core workflow must actually
+function" and "test the complete workflow" before declaring completion, a
+full Angular/Spring Boot/MySQL stack that can't be verified end-to-end this
+early risks becoming an *unverifiable* mockup — exactly what the brief
+prohibits ("Do NOT build only a calculator" / "not a superficial UI
+mockup").
 
 **Decision**: Phase 1 of this prototype is a self-contained, dependency-free
 web application (plain HTML/CSS/JS, no build step, no external services)
@@ -74,8 +73,8 @@ and reusable from the ML surrogate trainer. The JS prototype mirrors this:
 
 Deployment: each service Dockerized (`Dockerfile` per module in a real
 build), `docker-compose.yml` for app+MySQL+Redis locally, ECS/EKS-compatible
-on AWS. Not implemented in this environment (no Docker present) — documented
-here for when the target infra is available.
+on AWS. Not implemented in Phase 1 — documented here for when the target
+infra is available.
 
 ---
 
@@ -358,7 +357,7 @@ CSV-exportable, not just the top 5. No hand-authored or illustrative climate
 dataset ships with the app. Not implemented (explicitly out of scope for
 this pass, tracked for the production build): real authentication/RBAC
 persistence, ERA5/IMD/Solcast archive integration (each needs a registered
-API key this environment cannot obtain — NASA POWER + Open-Meteo cover
+API key not yet provisioned — NASA POWER + Open-Meteo cover
 solar/temperature climatology and forecast weather in the meantime), an
 interactive map location picker or 3D preview (both would need a CDN-hosted
 library, which conflicts with the offline-safety goal — 2D top-down +

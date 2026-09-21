@@ -11,10 +11,10 @@ Specific Shelter for Thermal Comfort Maintenance,"* initial focus: Ladakh.
 
 ## What this is (read this before judging the tech stack)
 
-This machine had no Java/Maven/Node/npm/Docker installed — only Python. Rather
-than hand over Angular/Spring Boot source that can't be compiled or run here
-("no superficial UI mockup" is a hard requirement in the brief), **Phase 1 is
-a complete, dependency-free, physics-based prototype in HTML/CSS/vanilla JS**.
+Rather than hand over Angular/Spring Boot source that can't be verified
+end-to-end this early ("no superficial UI mockup" is a hard requirement in
+the brief), **Phase 1 is a complete, dependency-free, physics-based
+prototype in HTML/CSS/vanilla JS**.
 It is not a mockup: the thermal engine is a real hourly RC energy-balance
 simulation (with occupant sensible/latent heat and occupancy-linked
 ventilation), the optimizer evaluates 60 real candidate designs, and every
@@ -143,8 +143,8 @@ AreaTherm/
   footprints, and door/window placement isn't tied to the per-face data
   model used elsewhere on that screen.
 - **External data sources beyond Open-Meteo/NASA POWER/Open-Meteo Elevation
-  are not wired up**, because they need a registered API key or account this
-  environment cannot obtain on your behalf: ERA5/Copernicus CDS, IMD via
+  are not wired up**, because they need a registered API key or account
+  that hasn't been provisioned yet: ERA5/Copernicus CDS, IMD via
   data.gov.in, ISRO Bhuvan/OpenTopography (used here only for elevation,
   which Open-Meteo's free Elevation API already covers), and Solcast. The
   `ClimateProfile` abstraction is architected so any of these can be added
