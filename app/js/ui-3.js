@@ -17,18 +17,27 @@ window.UI = window.UI || {};
     const uWall = ENGINE.wallUValue(design), uRoof = ENGINE.roofUValue(design), uFloor = ENGINE.floorUValue(design);
     // Summed across every window group, not just the first — a design can
     // have windows on more than one face, each with its own area/glazing.
-    let windowCondUA = 0, windowSolarGain = 0;
+    let windowArea = 0, windowCondUA = 0, windowSolarGain = 0;
     (design.windows || []).forEach(win => {
       const area = (win.areaEach || 0) * (win.count || 0);
       const shgc = (DATA.materialById(win.glazingMaterialId) || {}).shgc || 0.7;
+      windowArea += area;
       windowCondUA += ENGINE.windowUValue(win) * area;
       windowSolarGain += area * solarWm2 * 0.85 * shgc;
     });
+    const doorArea = (design.doors || []).reduce((s, d) => s + (d.areaEach || 0) * (d.count || 0), 0);
+    // Net the window (and door) area out of the wall's own area first —
+    // otherwise a window/door was double-counted: once as if that area were
+    // solid wall, and again via its own separate term (doors don't get a
+    // separate conduction term here at all — an existing, disclosed
+    // simplification of this quick point-estimate tool — but their area
+    // still isn't wall, so it has to come out of wallArea regardless).
+    const netWallArea = Math.max(0, geom.wallArea - windowArea - doorArea);
     const occ = ENGINE.computeOccupancyHeat(design);
     const infiltrationAch = ENGINE.windAdjustedInfiltrationAch(design, season || { windMs: 2 });
     const achTotal = infiltrationAch + ENGINE.occupancyAchIncrement(occ.persons, geom.volume);
     const ventUA = ENGINE.ventUAFromAch(achTotal, geom.volume);
-    const UA = uWall * geom.wallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + windowCondUA + ventUA;
+    const UA = uWall * netWallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + windowCondUA + ventUA;
     const solarGain = windowSolarGain + occ.totalSensibleW;
     return ambientC + solarGain / UA;
   }

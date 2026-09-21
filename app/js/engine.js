@@ -266,6 +266,28 @@ window.APP_ENGINE = (function () {
     const windowArea = windowGroups.reduce((s, w) => s + w.totalArea, 0);
     const netWallArea = Math.max(0, geom.wallArea - windowArea - doorArea);
 
+    // Per-face SOLID (opaque) area, for the wall UA/solar-gain terms below —
+    // without this, a face with a window or door on it was double-counted:
+    // once as if it were solid wall over its FULL un-reduced area (including
+    // sun-driven sol-air gain as if that whole area were opaque), and again
+    // via the window/door's own separate conduction + solar-gain terms. That
+    // inflated both heat loss and daytime solar overheating, worse the more
+    // window/door area a design has. Round/L-shape geometries model the
+    // whole exterior as a single combined face, so every opening (whichever
+    // FRONT/BACK/LEFT/RIGHT label it was configured with) is subtracted from
+    // that one face instead of matched by name.
+    const isSingleFaceShape = geom.faces.length === 1;
+    const openingAreaByFace = {};
+    windowGroups.forEach(w => { openingAreaByFace[w.orientation] = (openingAreaByFace[w.orientation] || 0) + w.totalArea; });
+    (design.doors || []).forEach(d => {
+      const face = d.orientation || "FRONT";
+      openingAreaByFace[face] = (openingAreaByFace[face] || 0) + (d.areaEach || 0) * (d.count || 0);
+    });
+    const solidFaceAreas = geom.faces.map(f => {
+      const openingsHere = isSingleFaceShape ? (windowArea + doorArea) : (openingAreaByFace[f.name] || 0);
+      return Math.max(0, f.areaM2 - openingsHere);
+    });
+
     const occ = computeOccupancyHeat(design);
     const infiltrationAch = windAdjustedInfiltrationAch(design, season);
     const occupancyAch = occupancyAchIncrement(occ.persons, geom.volume);
@@ -312,13 +334,17 @@ window.APP_ENGINE = (function () {
       const tAmb = ambientTempAt(season, hourDecimal);
       const gHoriz = solarIrradianceAt(season, hourDecimal);
 
-      // Sol-air temps per face (opaque) — wallMat/roofMat hoisted above the loop
+      // Sol-air temps per face (opaque) — wallMat/roofMat hoisted above the
+      // loop. Uses each face's SOLID area (solidFaceAreas), not its full
+      // f.areaM2, so a window/door's own terms below aren't double-counted
+      // on top of the wall's.
       let wallUA = 0, wallRefSum = 0;
-      geom.faces.forEach(f => {
+      geom.faces.forEach((f, fi) => {
+        const solidArea = solidFaceAreas[fi];
         const gFace = gHoriz * f.factor;
         const tSolAir = tAmb + (wallMat.absorptivity * gFace) / H_O;
-        wallUA += uWall * f.areaM2;
-        wallRefSum += uWall * f.areaM2 * tSolAir;
+        wallUA += uWall * solidArea;
+        wallRefSum += uWall * solidArea * tSolAir;
       });
       const tSolAirRoof = tAmb + (roofMat.absorptivity * gHoriz) / H_O;
       const roofUA = uRoof * geom.roofArea, roofRef = roofUA * tSolAirRoof;

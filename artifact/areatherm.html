@@ -2123,6 +2123,28 @@ window.APP_ENGINE = (function () {
     const windowArea = windowGroups.reduce((s, w) => s + w.totalArea, 0);
     const netWallArea = Math.max(0, geom.wallArea - windowArea - doorArea);
 
+    // Per-face SOLID (opaque) area, for the wall UA/solar-gain terms below —
+    // without this, a face with a window or door on it was double-counted:
+    // once as if it were solid wall over its FULL un-reduced area (including
+    // sun-driven sol-air gain as if that whole area were opaque), and again
+    // via the window/door's own separate conduction + solar-gain terms. That
+    // inflated both heat loss and daytime solar overheating, worse the more
+    // window/door area a design has. Round/L-shape geometries model the
+    // whole exterior as a single combined face, so every opening (whichever
+    // FRONT/BACK/LEFT/RIGHT label it was configured with) is subtracted from
+    // that one face instead of matched by name.
+    const isSingleFaceShape = geom.faces.length === 1;
+    const openingAreaByFace = {};
+    windowGroups.forEach(w => { openingAreaByFace[w.orientation] = (openingAreaByFace[w.orientation] || 0) + w.totalArea; });
+    (design.doors || []).forEach(d => {
+      const face = d.orientation || "FRONT";
+      openingAreaByFace[face] = (openingAreaByFace[face] || 0) + (d.areaEach || 0) * (d.count || 0);
+    });
+    const solidFaceAreas = geom.faces.map(f => {
+      const openingsHere = isSingleFaceShape ? (windowArea + doorArea) : (openingAreaByFace[f.name] || 0);
+      return Math.max(0, f.areaM2 - openingsHere);
+    });
+
     const occ = computeOccupancyHeat(design);
     const infiltrationAch = windAdjustedInfiltrationAch(design, season);
     const occupancyAch = occupancyAchIncrement(occ.persons, geom.volume);
@@ -2169,13 +2191,17 @@ window.APP_ENGINE = (function () {
       const tAmb = ambientTempAt(season, hourDecimal);
       const gHoriz = solarIrradianceAt(season, hourDecimal);
 
-      // Sol-air temps per face (opaque) — wallMat/roofMat hoisted above the loop
+      // Sol-air temps per face (opaque) — wallMat/roofMat hoisted above the
+      // loop. Uses each face's SOLID area (solidFaceAreas), not its full
+      // f.areaM2, so a window/door's own terms below aren't double-counted
+      // on top of the wall's.
       let wallUA = 0, wallRefSum = 0;
-      geom.faces.forEach(f => {
+      geom.faces.forEach((f, fi) => {
+        const solidArea = solidFaceAreas[fi];
         const gFace = gHoriz * f.factor;
         const tSolAir = tAmb + (wallMat.absorptivity * gFace) / H_O;
-        wallUA += uWall * f.areaM2;
-        wallRefSum += uWall * f.areaM2 * tSolAir;
+        wallUA += uWall * solidArea;
+        wallRefSum += uWall * solidArea * tSolAir;
       });
       const tSolAirRoof = tAmb + (roofMat.absorptivity * gHoriz) / H_O;
       const roofUA = uRoof * geom.roofArea, roofRef = roofUA * tSolAirRoof;
@@ -4728,7 +4754,15 @@ window.UI = window.UI || {};
       return draft;
     }
 
-    function renderLivePreview(el, result) {
+    function renderLivePreview(el, result, comfort) {
+      // Min/max comfortable temp are a SCORING threshold (how much of the
+      // day counts as "comfortable"), not a thermostat — this passive
+      // model has no active heating/cooling, so a bad design or harsh
+      // climate can genuinely push predicted indoor temp well outside
+      // that band. Flagged explicitly here so a wide predicted range
+      // reads as "this design needs work" rather than "the number is
+      // wrong" — the two are easy to conflate at a glance.
+      const exceedsBand = comfort && (result.comfort.maxIndoor > comfort.max || result.comfort.minIndoor < comfort.min);
       el.innerHTML = `
         <div class="grid grid-2">
           <div class="metric-card"><div class="metric-label">Predicted Indoor Temp</div><div class="metric-value" style="font-size:16px;">${result.comfort.minIndoor}–${result.comfort.maxIndoor}°C</div></div>
@@ -4736,6 +4770,7 @@ window.UI = window.UI || {};
           <div class="metric-card"><div class="metric-label">Comfort Duration</div><div class="metric-value" style="font-size:16px;">${result.comfort.comfortHoursPerDay} h/day</div></div>
           <div class="metric-card"><div class="metric-label">Net Energy</div><div class="metric-value" style="font-size:16px;">${result.daily.netKwh} kWh/day</div></div>
         </div>
+        ${exceedsBand ? `<p class="hint" style="margin-top:8px;color:var(--warn);">⚠ Predicted range falls outside your ${comfort.min}–${comfort.max}°C comfort band. This is a passive-physics prediction — there's no active heating/cooling in the model — so it means the design itself (insulation, window area/orientation, thermal mass) needs work, not that the number is wrong. See Thermal Simulation's heat-flow breakdown for which component dominates.</p>` : ""}
         <p class="hint" style="margin-top:8px;">Updates automatically as you edit the design — visit Thermal Simulation for the full hourly breakdown.</p>`;
     }
 
@@ -4782,7 +4817,7 @@ window.UI = window.UI || {};
       STORE.updateDesign(draft);
       try {
         const result = ENGINE.runSimulation(draft, season, STORE.get().simConfig);
-        renderLivePreview(previewEl, result);
+        renderLivePreview(previewEl, result, draft.comfort);
       } catch (e) {
         window.APP.logError("liveRecompute", e);
         previewEl.innerHTML = `<p class="hint">Live prediction unavailable for the current inputs.</p>`;
@@ -5921,18 +5956,27 @@ window.UI = window.UI || {};
     const uWall = ENGINE.wallUValue(design), uRoof = ENGINE.roofUValue(design), uFloor = ENGINE.floorUValue(design);
     // Summed across every window group, not just the first — a design can
     // have windows on more than one face, each with its own area/glazing.
-    let windowCondUA = 0, windowSolarGain = 0;
+    let windowArea = 0, windowCondUA = 0, windowSolarGain = 0;
     (design.windows || []).forEach(win => {
       const area = (win.areaEach || 0) * (win.count || 0);
       const shgc = (DATA.materialById(win.glazingMaterialId) || {}).shgc || 0.7;
+      windowArea += area;
       windowCondUA += ENGINE.windowUValue(win) * area;
       windowSolarGain += area * solarWm2 * 0.85 * shgc;
     });
+    const doorArea = (design.doors || []).reduce((s, d) => s + (d.areaEach || 0) * (d.count || 0), 0);
+    // Net the window (and door) area out of the wall's own area first —
+    // otherwise a window/door was double-counted: once as if that area were
+    // solid wall, and again via its own separate term (doors don't get a
+    // separate conduction term here at all — an existing, disclosed
+    // simplification of this quick point-estimate tool — but their area
+    // still isn't wall, so it has to come out of wallArea regardless).
+    const netWallArea = Math.max(0, geom.wallArea - windowArea - doorArea);
     const occ = ENGINE.computeOccupancyHeat(design);
     const infiltrationAch = ENGINE.windAdjustedInfiltrationAch(design, season || { windMs: 2 });
     const achTotal = infiltrationAch + ENGINE.occupancyAchIncrement(occ.persons, geom.volume);
     const ventUA = ENGINE.ventUAFromAch(achTotal, geom.volume);
-    const UA = uWall * geom.wallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + windowCondUA + ventUA;
+    const UA = uWall * netWallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + windowCondUA + ventUA;
     const solarGain = windowSolarGain + occ.totalSensibleW;
     return ambientC + solarGain / UA;
   }

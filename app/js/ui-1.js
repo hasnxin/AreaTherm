@@ -1024,7 +1024,15 @@ window.UI = window.UI || {};
       return draft;
     }
 
-    function renderLivePreview(el, result) {
+    function renderLivePreview(el, result, comfort) {
+      // Min/max comfortable temp are a SCORING threshold (how much of the
+      // day counts as "comfortable"), not a thermostat — this passive
+      // model has no active heating/cooling, so a bad design or harsh
+      // climate can genuinely push predicted indoor temp well outside
+      // that band. Flagged explicitly here so a wide predicted range
+      // reads as "this design needs work" rather than "the number is
+      // wrong" — the two are easy to conflate at a glance.
+      const exceedsBand = comfort && (result.comfort.maxIndoor > comfort.max || result.comfort.minIndoor < comfort.min);
       el.innerHTML = `
         <div class="grid grid-2">
           <div class="metric-card"><div class="metric-label">Predicted Indoor Temp</div><div class="metric-value" style="font-size:16px;">${result.comfort.minIndoor}–${result.comfort.maxIndoor}°C</div></div>
@@ -1032,6 +1040,7 @@ window.UI = window.UI || {};
           <div class="metric-card"><div class="metric-label">Comfort Duration</div><div class="metric-value" style="font-size:16px;">${result.comfort.comfortHoursPerDay} h/day</div></div>
           <div class="metric-card"><div class="metric-label">Net Energy</div><div class="metric-value" style="font-size:16px;">${result.daily.netKwh} kWh/day</div></div>
         </div>
+        ${exceedsBand ? `<p class="hint" style="margin-top:8px;color:var(--warn);">⚠ Predicted range falls outside your ${comfort.min}–${comfort.max}°C comfort band. This is a passive-physics prediction — there's no active heating/cooling in the model — so it means the design itself (insulation, window area/orientation, thermal mass) needs work, not that the number is wrong. See Thermal Simulation's heat-flow breakdown for which component dominates.</p>` : ""}
         <p class="hint" style="margin-top:8px;">Updates automatically as you edit the design — visit Thermal Simulation for the full hourly breakdown.</p>`;
     }
 
@@ -1078,7 +1087,7 @@ window.UI = window.UI || {};
       STORE.updateDesign(draft);
       try {
         const result = ENGINE.runSimulation(draft, season, STORE.get().simConfig);
-        renderLivePreview(previewEl, result);
+        renderLivePreview(previewEl, result, draft.comfort);
       } catch (e) {
         window.APP.logError("liveRecompute", e);
         previewEl.innerHTML = `<p class="hint">Live prediction unavailable for the current inputs.</p>`;
