@@ -320,8 +320,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
     if (result) {
       const dt = s.simConfig.timeStepMinutes / 60;
       CH.lineChart(U.qs("#tempChart", root), [
-        { name: "Indoor Temp", color: "#1976d2", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tIndoor })) },
-        { name: "Ambient Temp", color: "#d32f2f", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tAmb })) }
+        { name: "Indoor Temp", color: "#13AFC0", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tIndoor })) },
+        { name: "Ambient Temp", color: "#7B8A90", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tAmb })) }
       ], { height: 260, yLabel: "°C", xLabel: "Hours from simulation start", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max }, tempZones: true });
       const stepsPerDay = Math.round(24 * 60 / s.simConfig.timeStepMinutes);
       CH.hourlyHeatFlowChart(U.qs("#hourlyHeatFlowDiv", root), result.series.slice(0, stepsPerDay), { height: 280, yLabel: "W", xLabel: "Hour of day" });
@@ -671,8 +671,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         </div>`;
       const dt = s.simConfig.timeStepMinutes / 60;
       CH.lineChart(U.qs("#whatifChart", wrap), [
-        { name: "Before", color: "#9e9e9e", data: beforeRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) },
-        { name: "After", color: "#1976d2", data: afterRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) }
+        { name: "Before", color: "#7B8A90", data: beforeRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) },
+        { name: "After", color: "#13AFC0", data: afterRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) }
       ], { height: 240, yLabel: "°C", xLabel: "Hours", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max }, tempZones: true });
     }, root);
   };

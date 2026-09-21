@@ -1,70 +1,97 @@
 :root{
-  --navy-900:#0b1a2b; --navy-800:#122840; --navy-700:#1a3a5c;
-  /* Primary palette — DRDO/SIH design-spec tokens (AREATHERM_UI_UX_DESIGN_PROMPT.md) */
-  --accent:#1976d2; --accent-bright:#2196f3;
-  --bg:#fafafa; --panel:#ffffff; --border:#e0e0e0;
-  --text:#212121; --text-muted:#757575; --text-faint:#9e9e9e;
-  --good:#4caf50; --warn:#ff9800; --bad:#d32f2f;
-  --input-bg:#ffffff;
+  /* Sidebar/hero stay charcoal-anchored in BOTH themes — an intentional,
+     pre-existing AreaTherm choice (dark identity persists across the theme
+     toggle), now retinted from navy-blue to the new charcoal family instead
+     of switching to a theme-reactive sidebar. */
+  --navy-900:#0F1215; --navy-800:#14181C; --navy-700:#191E23;
+  /* Primary palette — "instrument panel" identity: a restrained cyan accent,
+     mostly-neutral surfaces, semantic color reserved for meaning (design-
+     system overhaul pass — see plan). */
+  --accent:#13AFC0; --accent-hover:#0C93A3; --accent-bright:#0C93A3; --accent-light:#8BE8EE;
+  --bg:#F4F7F8; --panel:#ffffff; --border:#DCE5E7; --border-strong:#C7D4D7;
+  --surface-elevated:#F9FBFB; --surface-hover:#EEF4F5;
+  --text:#172126; --text-muted:#52636A; --text-faint:#7B8A90;
+  --good:#218A62; --warn:#A96F00; --bad:#C24850; --thermal:#D97732; --neutral:#7B8A90;
+  --input-bg:#ffffff; --tooltip-bg:#172126;
   /* Chart-only temperature-zone colors — distinct from the --good/--warn/--bad
      general UI-state semantics above (e.g. --warn is caution-orange, but the
-     "warm" temperature zone is a separate yellow per the design spec). */
-  --temp-cold:#1976d2; --temp-comfortable:#4caf50; --temp-warm:#fbc02d; --temp-hot:#d32f2f;
+     "warm" temperature zone is a separate amber per the thermal-domain scale). */
+  --temp-cold:#13AFC0; --temp-comfortable:#218A62; --temp-warm:#D97732; --temp-hot:#C24850;
   --tag-demo-bg:#fff3e0; --tag-demo-fg:#e65100;
-  --tag-model-bg:#e3f2fd; --tag-model-fg:#0d47a1;
+  --tag-model-bg:#E1F5F7; --tag-model-fg:#0C7A87;
   --tag-input-bg:#e8f5e9; --tag-input-fg:#1b5e20;
   --tag-field-bg:#f3e5f5; --tag-field-fg:#4a148c;
-  --row-highlight:#e8f5e9; --th-bg:#f5f5f5;
+  --row-highlight:#e8f5e9; --th-bg:#F9FBFB;
   --chart-grid:#eeeeee; --chart-axis:#bdbdbd; --comfort-band:#e8f5e9;
   --recommend-bg:#e8f5e9;
   --workflow-old-bg:#ffebee; --workflow-old-border:#ffcdd2;
   --workflow-new-bg:#e8f5e9; --workflow-new-border:#c8e6c9;
-  --modal-bg:#ffffff; --pre-bg:#fafafa;
-  --active-tint:#e3f2fd;
+  --modal-bg:#ffffff; --pre-bg:#F4F7F8;
+  --active-tint:#E1F5F7;
   --data-real-bg:#e8f5e9; --data-real-fg:#2e7d32; --data-real-border:#c8e6c9;
   --data-illus-bg:#fff3e0; --data-illus-fg:#e65100; --data-illus-border:#ffe0b2;
   --error-bg:#ffebee; --error-border:#ffcdd2;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  --sans: "Helvetica Neue", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+  --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif;
   /* Spacing scale — applied to macro layout spacing (page/card/grid gaps),
      not forced onto every micro-component padding. */
   --spacing-xs:4px; --spacing-sm:8px; --spacing-md:16px; --spacing-lg:24px; --spacing-xl:32px;
   /* Type scale */
   --text-heading:24px; --text-subheading:18px; --text-body:14px; --line-height:1.5;
-  /* Elevation — soft, layered "floating card" shadow (visual-polish pass,
-     inspired by Notus React / AdminKit reference dashboards) */
+  /* Elevation — subtle in light mode, near-flat in dark (dark mode relies on
+     tonal surface steps for depth, not shadow — see --surface-elevated). */
   --shadow-sm:0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
   --shadow-md:0 2px 8px rgba(0,0,0,.15);
   --radius-card:12px; --radius-btn:8px;
 }
 /* Dark mode: toggled via Settings -> Appearance (sets documentElement's
    data-theme attribute). Only the light-chrome variables flip — the sidebar
-   is already dark navy in both modes by design. */
+   is already dark charcoal in both modes by design (AreaTherm's identity
+   anchor persists across the toggle, per the design brief: "dark mode is
+   the primary AreaTherm identity"). Deep charcoal, not pure black — retains
+   tonal surface steps (bg -> panel -> surface-elevated -> surface-hover) so
+   depth reads through layering rather than shadow, which barely shows
+   against a near-black background anyway. */
 :root[data-theme="dark"]{
-  --accent:#64b5f6; --accent-bright:#90caf9;
-  --bg:#121212; --panel:#1e1e1e; --border:#333333;
-  --text:#ffffff; --text-muted:#b0b0b0; --text-faint:#7a7a7a;
-  --good:#81c784; --warn:#ffb74d; --bad:#e57373;
-  --input-bg:#2a2a2a;
-  --temp-cold:#64b5f6; --temp-comfortable:#81c784; --temp-warm:#ffd54f; --temp-hot:#e57373;
+  --accent:#13AFC0; --accent-hover:#5AD0DC; --accent-bright:#5AD0DC; --accent-light:#8BE8EE;
+  --bg:#0B0D0F; --panel:#14181C; --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.14);
+  --surface-elevated:#191E23; --surface-hover:#20262C;
+  --text:#F2F5F7; --text-muted:#A3ADB5; --text-faint:#6F7A83;
+  --good:#3FBE93; --warn:#D9A441; --bad:#E58A90; --thermal:#E8A165; --neutral:#8A98A1;
+  --input-bg:#111519; --tooltip-bg:#242B31;
+  --temp-cold:#5AD0DC; --temp-comfortable:#3FBE93; --temp-warm:#E8A165; --temp-hot:#E58A90;
   --tag-demo-bg:#4a2f0a; --tag-demo-fg:#ffcc80;
-  --tag-model-bg:#0d2847; --tag-model-fg:#90caf9;
+  --tag-model-bg:#0d2f33; --tag-model-fg:#5AD0DC;
   --tag-input-bg:#0d3311; --tag-input-fg:#a5d6a7;
   --tag-field-bg:#2e0f42; --tag-field-fg:#ce93d8;
-  --row-highlight:#0d3311; --th-bg:#252525;
-  --chart-grid:#333333; --chart-axis:#4a4a4a; --comfort-band:#1b3d1e;
+  --row-highlight:#0d3311; --th-bg:#191E23;
+  --chart-grid:#252c33; --chart-axis:#4a5760; --comfort-band:#1b3d1e;
   --recommend-bg:#0d2410;
   --workflow-old-bg:#3a1414; --workflow-old-border:#5c2424;
   --workflow-new-bg:#0d2410; --workflow-new-border:#1f4a22;
-  --modal-bg:#1e1e1e; --pre-bg:#121212;
-  --active-tint:#0d2847;
+  --modal-bg:#191E23; --pre-bg:#0B0D0F;
+  --active-tint:#0d2f33;
   --data-real-bg:#0d2410; --data-real-fg:#81c784; --data-real-border:#1f4a22;
   --data-illus-bg:#4a2f0a; --data-illus-fg:#ffb74d; --data-illus-border:#5c3d14;
   --error-bg:#3a1414; --error-border:#5c2424;
 }
 *{box-sizing:border-box;}
+/* Visible keyboard-focus state — the browser default outline doesn't suit
+   the dark theme and wasn't consistent across components. :focus-visible
+   only (not plain :focus) so a mouse click doesn't show a ring a keyboard
+   Tab-press would. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:2px;
+}
 html,body{margin:0;padding:0;height:100%;}
 body{font-family:var(--sans); background:var(--bg); color:var(--text); font-size:14px;}
+/* Theme-toggle crossfade — scoped to the containers that actually carry
+   theme colors, not a blanket `*` selector (which would also slow down
+   unrelated hover/focus micro-interactions elsewhere). */
+body, .card, .metric-card, .sidebar, .topbar, .modal, input, select, textarea, .nav-tile, .wizard-step, .preset-btn{
+  transition:background-color .2s ease, border-color .2s ease, color .2s ease;
+}
 a{color:inherit; text-decoration:none;}
 button{font-family:inherit; cursor:pointer;}
 
@@ -126,6 +153,24 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 .view{padding:22px 26px 60px; max-width:1320px;}
 @media (min-width:769px){ .card{padding:var(--spacing-lg);} }
 
+/* Restrained page/card entrance — every route render replaces .view's
+   innerHTML from scratch already, so this replays naturally on every
+   navigation with zero JS. One-shot (animation, not a looping/repeating
+   effect); disabled entirely under reduced-motion below. */
+@media (prefers-reduced-motion: no-preference){
+  .view{animation:areatherm-enter .22s ease-out both;}
+  .view > .card, .view > .grid > .card, .view > .grid > .metric-card, .view .hero{
+    animation:areatherm-enter .22s ease-out both;
+  }
+  .view > .card:nth-of-type(2), .view > .grid > .card:nth-of-type(2), .view > .grid > .metric-card:nth-of-type(2){ animation-delay:.03s; }
+  .view > .card:nth-of-type(3), .view > .grid > .card:nth-of-type(3), .view > .grid > .metric-card:nth-of-type(3){ animation-delay:.06s; }
+  .view > .card:nth-of-type(4), .view > .grid > .card:nth-of-type(4), .view > .grid > .metric-card:nth-of-type(4){ animation-delay:.09s; }
+}
+@keyframes areatherm-enter{
+  from{ opacity:0; transform:translateY(6px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
 /* Typography helpers */
 h1{font-size:var(--text-heading); margin:0 0 4px; font-weight:700;}
 h2{font-size:var(--text-subheading); margin:0 0 12px; font-weight:700;}
@@ -160,22 +205,25 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
    exist in the markup today) — a KPI tile always gets proper chrome. */
 .metric-card{position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm);}
 .metric-card .metric-label{font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px;}
-.metric-card .metric-value{font-size:26px; font-weight:700; font-family:var(--mono);}
+.metric-card .metric-value{font-size:26px; font-weight:700; font-family:var(--mono); font-variant-numeric:tabular-nums;}
 .metric-card .metric-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
 
-/* Headline-KPI icon badge — Dashboard + Simulation's top summary cards only
-   (see styles.css header note / plan). Pastel circle + emoji, reusing the
-   existing tag-color token pairs so it's dark-mode-safe with zero new vars. */
+/* Headline-KPI icon badge — Dashboard + Simulation's top summary cards only.
+   Deliberately ONE neutral treatment, not a color per metric: these are
+   routine data readouts, not statuses, and "keep KPI cards neutral / don't
+   give every card a different color" is a hard rule of the current design
+   system. The emoji glyph alone still distinguishes each metric. */
 .metric-icon{
   position:absolute; top:14px; right:14px;
   width:38px; height:38px; border-radius:50%;
   display:flex; align-items:center; justify-content:center;
-  font-size:17px; line-height:1;
+  font-size:16px; line-height:1;
+  background:var(--surface-elevated); color:var(--text-muted);
+  border:1px solid var(--border);
 }
-.metric-icon-sun{background:var(--tag-demo-bg); color:var(--tag-demo-fg);}
-.metric-icon-temp{background:var(--tag-model-bg); color:var(--tag-model-fg);}
-.metric-icon-comfort{background:var(--tag-input-bg); color:var(--tag-input-fg);}
-.metric-icon-heat{background:var(--error-bg); color:var(--bad);}
+.metric-icon-sun, .metric-icon-temp, .metric-icon-comfort, .metric-icon-heat{
+  background:var(--surface-elevated); color:var(--text-muted);
+}
 
 /* Status callouts (replace ad-hoc inline styles so dark mode can reach them) */
 .callout-warn{background:var(--tag-demo-bg); border-color:var(--data-illus-border);}
@@ -221,7 +269,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .chart-point{fill:var(--accent); opacity:.75;}
 
 .chart-crosshair{stroke:var(--text-faint); stroke-width:1; stroke-dasharray:3 3;}
-.chart-tooltip{position:absolute; top:14px; background:#212121; color:#fff; font-size:11px; padding:8px 10px; border-radius:var(--radius-card); pointer-events:none; z-index:5; box-shadow:0 6px 18px rgba(0,0,0,.25); min-width:150px;}
+.chart-tooltip{position:absolute; top:14px; background:var(--tooltip-bg); color:#fff; font-size:11px; padding:8px 10px; border-radius:var(--radius-card); pointer-events:none; z-index:5; box-shadow:0 6px 18px rgba(0,0,0,.25); min-width:150px;}
 .chart-tooltip i{width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:5px;}
 .chart-tooltip b{display:block; margin-bottom:3px;}
 .chart-tooltip div{white-space:nowrap;}
@@ -301,7 +349,7 @@ td.num{font-family:var(--mono); text-align:right;}
 
 /* Dashboard — explore-the-platform tiles */
 .nav-tile{display:block; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm); transition:border-color .15s, box-shadow .15s, transform .15s;}
-.nav-tile:hover{border-color:var(--accent); box-shadow:0 2px 10px rgba(25,118,210,.12); transform:translateY(-1px);}
+.nav-tile:hover{border-color:var(--accent); box-shadow:0 2px 10px rgba(19,175,192,.15); transform:translateY(-1px); background:var(--surface-hover);}
 .nav-tile-icon{font-size:20px; margin-bottom:8px;}
 .nav-tile-title{font-size:13.5px; font-weight:700; color:var(--text); margin-bottom:4px;}
 .nav-tile-desc{font-size:12px; color:var(--text-muted); line-height:1.45;}

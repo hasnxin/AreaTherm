@@ -1,7 +1,7 @@
 /* AreaTherm — 3D shelter preview (Vanilla Three.js, ES module, no build step).
    Loaded via an import map (see index.html) — no bundler, matching the rest
    of this project's zero-build-step architecture. Renders a parametric
-   shelter — box, cylinder, dome, or L-shaped extrusion, matching whichever
+   shelter — box, cylinder, half-cylinder, dome, or L-shaped extrusion, matching whichever
    shape engine.js's computeGeometry() actually computes for — with door/
    window placeholders on their configured face, and a sun that orbits the
    building on a fixed-elevation circle driven by `sunAngle`.
@@ -27,6 +27,13 @@ const WINDOW_SIZE = { w: 1.1, h: 1.2 };
 const SUN_ELEVATION_DEG = 38;            // fixed height angle the sun orbits at
 const ROUND_ARC_DEG = 70;                // arc a round shape's openings are allowed to spread across, per face
 const FACE_ANGLE_DEG = { FRONT: 0, RIGHT: 90, BACK: 180, LEFT: 270 }; // matches ui-1.js's edgeOf() convention
+// SEMI_CIRCULAR's curved wall only physically exists across [-90deg,90deg]
+// (see _addSemiCylinder) — FRONT stays at the arc's peak, but LEFT/RIGHT
+// are pulled in from the full circle's +-90deg to +-55deg so a +-35deg
+// (ROUND_ARC_DEG/2) spread of openings lands exactly at, not past, the
+// arc's real edge. BACK has no curved wall at all — it's the flat wall,
+// handled separately (see _placeOnFaceSemiCircular).
+const SEMI_FACE_ANGLE_DEG = { FRONT: 0, RIGHT: 55, LEFT: -55 };
 
 export class Shelter3D {
   /** @param {HTMLCanvasElement} canvas */
@@ -94,7 +101,7 @@ export class Shelter3D {
     // stays visible (and correctly lit — MeshLambertMaterial flips the
     // normal for back-facing fragments automatically) no matter which way
     // a given face happens to wind.
-    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xe3f2fd, side: THREE.DoubleSide });
+    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xE1F5F7, side: THREE.DoubleSide });
     this.wallGroup = new THREE.Group(); // holds whichever geometry the current shape needs (1 mesh for box/cylinder, 2 for dome, 1 extrusion for L-shape)
     this.shelterGroup.add(this.wallGroup);
 
@@ -103,7 +110,7 @@ export class Shelter3D {
     // outside the building (PlaneGeometry only renders its front face by
     // default, and that face points inward here).
     this.doorMaterial = new THREE.MeshLambertMaterial({ color: 0x5a3d2b, side: THREE.DoubleSide });
-    this.windowMaterial = new THREE.MeshLambertMaterial({ color: 0x2196f3, side: THREE.DoubleSide });
+    this.windowMaterial = new THREE.MeshLambertMaterial({ color: 0x13AFC0, side: THREE.DoubleSide });
     this.openingsGroup = new THREE.Group();
     this.shelterGroup.add(this.openingsGroup);
   }
@@ -205,8 +212,10 @@ export class Shelter3D {
 
   _rebuildGeometry(shape, width, length, height, diameter, lengthA, widthA, lengthB, widthB) {
     this._clearWallGroup();
-    if (shape === "CIRCULAR" || shape === "SEMI_CIRCULAR") {
+    if (shape === "CIRCULAR") {
       this._addCylinder(diameter, height);
+    } else if (shape === "SEMI_CIRCULAR") {
+      this._addSemiCylinder(diameter, height);
     } else if (shape === "DOME") {
       this._addCylinder(diameter, height);
       this._addDomeCap(diameter, height);
@@ -219,15 +228,44 @@ export class Shelter3D {
     }
   }
 
-  // Flat-roofed cylinder — matches engine.js's computeGeometry(), which
-  // gives CIRCULAR and SEMI_CIRCULAR the same floor/roof-area formulas
-  // (a true half-circle footprint isn't actually modeled anywhere yet, so
-  // this view doesn't invent one either — both render as a full drum).
+  // Flat-roofed cylinder — matches engine.js's computeGeometry() CIRCULAR
+  // treatment (full-circle floor, flat roof of the same area).
   _addCylinder(diameter, height) {
     const r = (diameter || 5) / 2;
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, height, 32), this.wallMaterial);
     mesh.position.set(0, height / 2, 0);
     this.wallGroup.add(mesh);
+  }
+
+  // A genuine half-circle footprint — matches engine.js's computeGeometry()
+  // SEMI_CIRCULAR treatment (half the floor area of CIRCULAR at the same
+  // diameter, a straight wall closing off the flat side). Built from a
+  // half-swept CylinderGeometry (thetaStart=90deg, thetaLength=180deg in
+  // Three's convention) for the curved wall + its own half-disk top/bottom
+  // caps, plus one flat PlaneGeometry for the straight wall.
+  //
+  // Three's cylinder vertex formula is (x,z) = r*(sin(u), cos(u)) for
+  // u = thetaStart + t*thetaLength. Choosing thetaStart=PI/2, thetaLength=PI
+  // sweeps u over [90deg,270deg], i.e. exactly the z<=0 half of the circle —
+  // matching _placeOnFaceRound's FRONT convention (angle 0 -> position
+  // (0,y,-r), the -Z direction) so the arc's peak (u=180deg -> (0,-r)) lands
+  // at FRONT, and its two straight edges (u=90deg -> (r,0), u=270deg ->
+  // (-r,0)) land exactly where the flat wall must meet it.
+  _addSemiCylinder(diameter, height) {
+    const r = (diameter || 5) / 2;
+    const arc = new THREE.Mesh(
+      new THREE.CylinderGeometry(r, r, height, 32, 1, false, Math.PI / 2, Math.PI),
+      this.wallMaterial
+    );
+    arc.position.set(0, height / 2, 0);
+    this.wallGroup.add(arc);
+
+    // Flat wall: PlaneGeometry's local XY plane (X=width, Y=height, normal
+    // along Z) already matches world (X, Y, Z=0) with no rotation needed —
+    // it spans the full diameter along X, closing the straight edge at Z=0.
+    const flat = new THREE.Mesh(new THREE.PlaneGeometry(diameter || 5, height), this.wallMaterial);
+    flat.position.set(0, height / 2, 0);
+    this.wallGroup.add(flat);
   }
 
   // A hemispherical cap sitting on top of the cylinder body — engine.js
@@ -309,6 +347,26 @@ export class Shelter3D {
     this.openingsGroup.add(mesh);
   }
 
+  // SEMI_CIRCULAR only: FRONT/LEFT/RIGHT sit on the curved wall (same
+  // formula as _placeOnFaceRound, but remapped via SEMI_FACE_ANGLE_DEG so
+  // they stay on the half that's actually built — see _addSemiCylinder).
+  // BACK has no curved wall at all; it's the flat diameter wall at Z=0.
+  _placeOnFaceSemiCircular(material, w, h, y, face, along, r) {
+    if (face === "BACK") {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+      mesh.position.set(along, y, 0.02); // flat wall is at Z=0; outward (away from the arc) is +Z
+      this.openingsGroup.add(mesh);
+      return;
+    }
+    const faceAngleRad = THREE.MathUtils.degToRad(SEMI_FACE_ANGLE_DEG[face] ?? 0);
+    const theta = faceAngleRad + along / r;
+    const rOut = r + 0.02;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+    mesh.rotation.y = theta;
+    mesh.position.set(rOut * Math.sin(theta), y, -rOut * Math.cos(theta));
+    this.openingsGroup.add(mesh);
+  }
+
   // Maps FRONT/BACK/LEFT/RIGHT onto the L-tromino's actual edges: FRONT is
   // wing A's full-width front edge; BACK is wing B's (narrower) back edge;
   // LEFT is the one continuous full-depth wall both wings share; RIGHT is
@@ -353,10 +411,14 @@ export class Shelter3D {
     }
 
     let spanOf, place;
-    if (shape === "CIRCULAR" || shape === "DOME" || shape === "SEMI_CIRCULAR") {
+    if (shape === "CIRCULAR" || shape === "DOME") {
       const r = (diameter || 5) / 2;
       spanOf = () => r * THREE.MathUtils.degToRad(ROUND_ARC_DEG);
       place = (material, w, h, y, face, along) => this._placeOnFaceRound(material, w, h, y, face, along, r);
+    } else if (shape === "SEMI_CIRCULAR") {
+      const r = (diameter || 5) / 2;
+      spanOf = (face) => face === "BACK" ? (diameter || 5) : r * THREE.MathUtils.degToRad(ROUND_ARC_DEG);
+      place = (material, w, h, y, face, along) => this._placeOnFaceSemiCircular(material, w, h, y, face, along, r);
     } else if (shape === "L_SHAPE") {
       const wA = widthA || 4, lB = lengthB || 3, lA = lengthA || 4;
       const wB = Math.min(widthB || 3, lA);

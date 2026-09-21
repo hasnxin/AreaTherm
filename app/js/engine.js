@@ -127,15 +127,28 @@ window.APP_ENGINE = (function () {
   function computeGeometry(design, latitude) {
     let L = design.length || 6, W = design.width || 4, H = design.height || 3;
     let floorArea, roofArea, perimeter;
-    const isRound = design.shape === "CIRCULAR" || design.shape === "DOME" || design.shape === "SEMI_CIRCULAR";
+    const isSemiCircular = design.shape === "SEMI_CIRCULAR";
+    const isRound = design.shape === "CIRCULAR" || design.shape === "DOME" || isSemiCircular;
     const isLShape = design.shape === "L_SHAPE";
     if (isRound) {
       const d = design.diameter || Math.max(L, W) || 5;
       const r = d / 2;
-      floorArea = Math.PI * r * r;
-      perimeter = Math.PI * d;
-      roofArea = (design.shape === "DOME") ? 2 * Math.PI * r * r : floorArea;
-      L = W = d;
+      if (isSemiCircular) {
+        // A genuine half-circle footprint (a straight wall across the full
+        // diameter, closing off a half-disk floor) — not the same shape as
+        // CIRCULAR at the same diameter, so it must not share its area
+        // formulas. Flat roof, same area as the floor (like CIRCULAR, not
+        // domed like DOME).
+        floorArea = (Math.PI * r * r) / 2;
+        perimeter = d + Math.PI * r; // straight diameter wall + the half-circumference arc
+        roofArea = floorArea;
+        L = d; W = r; // bounding box: full diameter one way, radius the other
+      } else {
+        floorArea = Math.PI * r * r;
+        perimeter = Math.PI * d;
+        roofArea = (design.shape === "DOME") ? 2 * Math.PI * r * r : floorArea;
+        L = W = d;
+      }
     } else if (isLShape) {
       // Two rectangular wings sharing a corner — wing B sits atop the left
       // portion of wing A's far edge (a standard L-tromino layout). Area

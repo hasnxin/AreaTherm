@@ -269,13 +269,13 @@ window.UI = window.UI || {};
       `;
     const hours = Array.from({ length: 25 }, (_, i) => i);
     CH.lineChart(U.qs("#climateChart", box), [
-      { name: "Ambient Temp (°C)", color: "#d32f2f", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
+      { name: "Ambient Temp (°C)", color: "#7B8A90", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
     ], { height: 200, yLabel: "°C", xLabel: "Hour of day", tempZones: true });
     const solarDiv = document.createElement("div");
     solarDiv.style.marginTop = "10px";
     U.qs("#climateChart", box).appendChild(solarDiv);
     CH.lineChart(solarDiv, [
-      { name: "Solar Irradiance (W/m²)", color: "#ff9800", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
+      { name: "Solar Irradiance (W/m²)", color: "#D97732", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
     ], { height: 180, yLabel: "W/m²", xLabel: "Hour of day" });
 
     if (s.location && s.location.solarDataSource && s.location.solarDataSource.monthlyTemp) {
@@ -285,7 +285,7 @@ window.UI = window.UI || {};
         monthlyTemp.map(m => ({ label: m.month, mean: m.tempC, min: m.tempMinC, max: m.tempMaxC })),
         { height: 220, yLabel: "°C" });
       CH.lineChart(U.qs("#monthlySolarChart", box), [
-        { name: "Solar (kWh/m²/day)", color: "#ff9800", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
+        { name: "Solar (kWh/m²/day)", color: "#D97732", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
       ], { height: 220, yLabel: "kWh/m²/day", xFormat: (x) => monthlyGhi[Math.round(x)] ? monthlyGhi[Math.round(x)].month : "" });
       const hottest = monthlyTemp.reduce((a, b) => (b.tempC > a.tempC ? b : a));
       const coldest = monthlyTemp.reduce((a, b) => (b.tempC < a.tempC ? b : a));
@@ -433,7 +433,7 @@ window.UI = window.UI || {};
           if (btn) btn.addEventListener("click", () => { map.closePopup(); loadLocationById(l.id); });
         });
       });
-      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#1976d2", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
+      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#13AFC0", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
     }
 
     wireComfortCard(root);
@@ -564,8 +564,15 @@ window.UI = window.UI || {};
     const w = overallL * scale, h = overallW * scale;
     const bearing = bearingOf(design);
     let shapeSvg;
-    if (isRound) {
-      shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
+    if (design.shape === "SEMI_CIRCULAR") {
+      // Genuine half-disk footprint (see engine.js computeGeometry): a
+      // straight wall across the full diameter (drawn at the BACK, larger
+      // y) closing off a half-circle that bulges toward the FRONT (smaller
+      // y) — geom.L is the full diameter (=w here), geom.W is just the
+      // radius (=h here), so the arc's radius is exactly w/2 (== h).
+      shapeSvg = `<path d="M ${cx - w / 2} ${cy + h / 2} A ${w / 2} ${w / 2} 0 0 1 ${cx + w / 2} ${cy + h / 2} Z" fill="#E1F5F7" stroke="#13AFC0" stroke-width="2"/>`;
+    } else if (isRound) {
+      shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#E1F5F7" stroke="#13AFC0" stroke-width="2"/>`;
     } else if (isLShape) {
       const lApx = (design.lengthA || 4) * scale, wApx = (design.widthA || 4) * scale, wBpx = Math.min((design.widthB || 3) * scale, lApx);
       const ox = cx - w / 2, oy = cy - h / 2;
@@ -573,9 +580,9 @@ window.UI = window.UI || {};
         [ox, oy + h], [ox + lApx, oy + h], [ox + lApx, oy + h - wApx],
         [ox + wBpx, oy + h - wApx], [ox + wBpx, oy], [ox, oy]
       ];
-      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
+      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#E1F5F7" stroke="#13AFC0" stroke-width="2"/>`;
     } else {
-      shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
+      shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#E1F5F7" stroke="#13AFC0" stroke-width="2"/>`;
     }
 
     // Opening marks (doors, windows) on their actual configured face
@@ -605,9 +612,9 @@ window.UI = window.UI || {};
       const face = win.orientation || "FRONT";
       winCountByFace[face] = (winCountByFace[face] || 0) + (win.count || 0);
     });
-    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#2196f3")).join("");
+    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#0C93A3")).join("");
     const door = design.doors && design.doors[0];
-    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#e65100") : "";
+    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#D97732") : "";
 
     const labelOffset = 16;
     const edges = isRound ? [] : [
@@ -848,7 +855,7 @@ window.UI = window.UI || {};
             <h3>3D Preview <span class="tag tag-demo">illustrative</span></h3>
             <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:var(--radius-card); cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
-            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and each window group below are shown on their own configured face — each window group's face also drives its own share of the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
+            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and each window group below are shown on their own configured face — each window group's face also drives its own share of the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : d.shape === "SEMI_CIRCULAR" ? "A genuine half-circle footprint — a straight wall closes the flat side (shown facing BACK), with floor, wall and roof areas calculated as exactly half of a full circle at the same diameter, not the same footprint as CIRCULAR." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>Derived Geometry <span class="tag tag-model">calculated</span></h3>

@@ -26,72 +26,99 @@
 </script>
 <style>
 :root{
-  --navy-900:#0b1a2b; --navy-800:#122840; --navy-700:#1a3a5c;
-  /* Primary palette — DRDO/SIH design-spec tokens (AREATHERM_UI_UX_DESIGN_PROMPT.md) */
-  --accent:#1976d2; --accent-bright:#2196f3;
-  --bg:#fafafa; --panel:#ffffff; --border:#e0e0e0;
-  --text:#212121; --text-muted:#757575; --text-faint:#9e9e9e;
-  --good:#4caf50; --warn:#ff9800; --bad:#d32f2f;
-  --input-bg:#ffffff;
+  /* Sidebar/hero stay charcoal-anchored in BOTH themes — an intentional,
+     pre-existing AreaTherm choice (dark identity persists across the theme
+     toggle), now retinted from navy-blue to the new charcoal family instead
+     of switching to a theme-reactive sidebar. */
+  --navy-900:#0F1215; --navy-800:#14181C; --navy-700:#191E23;
+  /* Primary palette — "instrument panel" identity: a restrained cyan accent,
+     mostly-neutral surfaces, semantic color reserved for meaning (design-
+     system overhaul pass — see plan). */
+  --accent:#13AFC0; --accent-hover:#0C93A3; --accent-bright:#0C93A3; --accent-light:#8BE8EE;
+  --bg:#F4F7F8; --panel:#ffffff; --border:#DCE5E7; --border-strong:#C7D4D7;
+  --surface-elevated:#F9FBFB; --surface-hover:#EEF4F5;
+  --text:#172126; --text-muted:#52636A; --text-faint:#7B8A90;
+  --good:#218A62; --warn:#A96F00; --bad:#C24850; --thermal:#D97732; --neutral:#7B8A90;
+  --input-bg:#ffffff; --tooltip-bg:#172126;
   /* Chart-only temperature-zone colors — distinct from the --good/--warn/--bad
      general UI-state semantics above (e.g. --warn is caution-orange, but the
-     "warm" temperature zone is a separate yellow per the design spec). */
-  --temp-cold:#1976d2; --temp-comfortable:#4caf50; --temp-warm:#fbc02d; --temp-hot:#d32f2f;
+     "warm" temperature zone is a separate amber per the thermal-domain scale). */
+  --temp-cold:#13AFC0; --temp-comfortable:#218A62; --temp-warm:#D97732; --temp-hot:#C24850;
   --tag-demo-bg:#fff3e0; --tag-demo-fg:#e65100;
-  --tag-model-bg:#e3f2fd; --tag-model-fg:#0d47a1;
+  --tag-model-bg:#E1F5F7; --tag-model-fg:#0C7A87;
   --tag-input-bg:#e8f5e9; --tag-input-fg:#1b5e20;
   --tag-field-bg:#f3e5f5; --tag-field-fg:#4a148c;
-  --row-highlight:#e8f5e9; --th-bg:#f5f5f5;
+  --row-highlight:#e8f5e9; --th-bg:#F9FBFB;
   --chart-grid:#eeeeee; --chart-axis:#bdbdbd; --comfort-band:#e8f5e9;
   --recommend-bg:#e8f5e9;
   --workflow-old-bg:#ffebee; --workflow-old-border:#ffcdd2;
   --workflow-new-bg:#e8f5e9; --workflow-new-border:#c8e6c9;
-  --modal-bg:#ffffff; --pre-bg:#fafafa;
-  --active-tint:#e3f2fd;
+  --modal-bg:#ffffff; --pre-bg:#F4F7F8;
+  --active-tint:#E1F5F7;
   --data-real-bg:#e8f5e9; --data-real-fg:#2e7d32; --data-real-border:#c8e6c9;
   --data-illus-bg:#fff3e0; --data-illus-fg:#e65100; --data-illus-border:#ffe0b2;
   --error-bg:#ffebee; --error-border:#ffcdd2;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  --sans: "Helvetica Neue", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+  --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif;
   /* Spacing scale — applied to macro layout spacing (page/card/grid gaps),
      not forced onto every micro-component padding. */
   --spacing-xs:4px; --spacing-sm:8px; --spacing-md:16px; --spacing-lg:24px; --spacing-xl:32px;
   /* Type scale */
   --text-heading:24px; --text-subheading:18px; --text-body:14px; --line-height:1.5;
-  /* Elevation — soft, layered "floating card" shadow (visual-polish pass,
-     inspired by Notus React / AdminKit reference dashboards) */
+  /* Elevation — subtle in light mode, near-flat in dark (dark mode relies on
+     tonal surface steps for depth, not shadow — see --surface-elevated). */
   --shadow-sm:0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
   --shadow-md:0 2px 8px rgba(0,0,0,.15);
   --radius-card:12px; --radius-btn:8px;
 }
 /* Dark mode: toggled via Settings -> Appearance (sets documentElement's
    data-theme attribute). Only the light-chrome variables flip — the sidebar
-   is already dark navy in both modes by design. */
+   is already dark charcoal in both modes by design (AreaTherm's identity
+   anchor persists across the toggle, per the design brief: "dark mode is
+   the primary AreaTherm identity"). Deep charcoal, not pure black — retains
+   tonal surface steps (bg -> panel -> surface-elevated -> surface-hover) so
+   depth reads through layering rather than shadow, which barely shows
+   against a near-black background anyway. */
 :root[data-theme="dark"]{
-  --accent:#64b5f6; --accent-bright:#90caf9;
-  --bg:#121212; --panel:#1e1e1e; --border:#333333;
-  --text:#ffffff; --text-muted:#b0b0b0; --text-faint:#7a7a7a;
-  --good:#81c784; --warn:#ffb74d; --bad:#e57373;
-  --input-bg:#2a2a2a;
-  --temp-cold:#64b5f6; --temp-comfortable:#81c784; --temp-warm:#ffd54f; --temp-hot:#e57373;
+  --accent:#13AFC0; --accent-hover:#5AD0DC; --accent-bright:#5AD0DC; --accent-light:#8BE8EE;
+  --bg:#0B0D0F; --panel:#14181C; --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.14);
+  --surface-elevated:#191E23; --surface-hover:#20262C;
+  --text:#F2F5F7; --text-muted:#A3ADB5; --text-faint:#6F7A83;
+  --good:#3FBE93; --warn:#D9A441; --bad:#E58A90; --thermal:#E8A165; --neutral:#8A98A1;
+  --input-bg:#111519; --tooltip-bg:#242B31;
+  --temp-cold:#5AD0DC; --temp-comfortable:#3FBE93; --temp-warm:#E8A165; --temp-hot:#E58A90;
   --tag-demo-bg:#4a2f0a; --tag-demo-fg:#ffcc80;
-  --tag-model-bg:#0d2847; --tag-model-fg:#90caf9;
+  --tag-model-bg:#0d2f33; --tag-model-fg:#5AD0DC;
   --tag-input-bg:#0d3311; --tag-input-fg:#a5d6a7;
   --tag-field-bg:#2e0f42; --tag-field-fg:#ce93d8;
-  --row-highlight:#0d3311; --th-bg:#252525;
-  --chart-grid:#333333; --chart-axis:#4a4a4a; --comfort-band:#1b3d1e;
+  --row-highlight:#0d3311; --th-bg:#191E23;
+  --chart-grid:#252c33; --chart-axis:#4a5760; --comfort-band:#1b3d1e;
   --recommend-bg:#0d2410;
   --workflow-old-bg:#3a1414; --workflow-old-border:#5c2424;
   --workflow-new-bg:#0d2410; --workflow-new-border:#1f4a22;
-  --modal-bg:#1e1e1e; --pre-bg:#121212;
-  --active-tint:#0d2847;
+  --modal-bg:#191E23; --pre-bg:#0B0D0F;
+  --active-tint:#0d2f33;
   --data-real-bg:#0d2410; --data-real-fg:#81c784; --data-real-border:#1f4a22;
   --data-illus-bg:#4a2f0a; --data-illus-fg:#ffb74d; --data-illus-border:#5c3d14;
   --error-bg:#3a1414; --error-border:#5c2424;
 }
 *{box-sizing:border-box;}
+/* Visible keyboard-focus state — the browser default outline doesn't suit
+   the dark theme and wasn't consistent across components. :focus-visible
+   only (not plain :focus) so a mouse click doesn't show a ring a keyboard
+   Tab-press would. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:2px;
+}
 html,body{margin:0;padding:0;height:100%;}
 body{font-family:var(--sans); background:var(--bg); color:var(--text); font-size:14px;}
+/* Theme-toggle crossfade — scoped to the containers that actually carry
+   theme colors, not a blanket `*` selector (which would also slow down
+   unrelated hover/focus micro-interactions elsewhere). */
+body, .card, .metric-card, .sidebar, .topbar, .modal, input, select, textarea, .nav-tile, .wizard-step, .preset-btn{
+  transition:background-color .2s ease, border-color .2s ease, color .2s ease;
+}
 a{color:inherit; text-decoration:none;}
 button{font-family:inherit; cursor:pointer;}
 
@@ -153,6 +180,24 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 .view{padding:22px 26px 60px; max-width:1320px;}
 @media (min-width:769px){ .card{padding:var(--spacing-lg);} }
 
+/* Restrained page/card entrance — every route render replaces .view's
+   innerHTML from scratch already, so this replays naturally on every
+   navigation with zero JS. One-shot (animation, not a looping/repeating
+   effect); disabled entirely under reduced-motion below. */
+@media (prefers-reduced-motion: no-preference){
+  .view{animation:areatherm-enter .22s ease-out both;}
+  .view > .card, .view > .grid > .card, .view > .grid > .metric-card, .view .hero{
+    animation:areatherm-enter .22s ease-out both;
+  }
+  .view > .card:nth-of-type(2), .view > .grid > .card:nth-of-type(2), .view > .grid > .metric-card:nth-of-type(2){ animation-delay:.03s; }
+  .view > .card:nth-of-type(3), .view > .grid > .card:nth-of-type(3), .view > .grid > .metric-card:nth-of-type(3){ animation-delay:.06s; }
+  .view > .card:nth-of-type(4), .view > .grid > .card:nth-of-type(4), .view > .grid > .metric-card:nth-of-type(4){ animation-delay:.09s; }
+}
+@keyframes areatherm-enter{
+  from{ opacity:0; transform:translateY(6px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
 /* Typography helpers */
 h1{font-size:var(--text-heading); margin:0 0 4px; font-weight:700;}
 h2{font-size:var(--text-subheading); margin:0 0 12px; font-weight:700;}
@@ -187,22 +232,25 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
    exist in the markup today) — a KPI tile always gets proper chrome. */
 .metric-card{position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm);}
 .metric-card .metric-label{font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px;}
-.metric-card .metric-value{font-size:26px; font-weight:700; font-family:var(--mono);}
+.metric-card .metric-value{font-size:26px; font-weight:700; font-family:var(--mono); font-variant-numeric:tabular-nums;}
 .metric-card .metric-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
 
-/* Headline-KPI icon badge — Dashboard + Simulation's top summary cards only
-   (see styles.css header note / plan). Pastel circle + emoji, reusing the
-   existing tag-color token pairs so it's dark-mode-safe with zero new vars. */
+/* Headline-KPI icon badge — Dashboard + Simulation's top summary cards only.
+   Deliberately ONE neutral treatment, not a color per metric: these are
+   routine data readouts, not statuses, and "keep KPI cards neutral / don't
+   give every card a different color" is a hard rule of the current design
+   system. The emoji glyph alone still distinguishes each metric. */
 .metric-icon{
   position:absolute; top:14px; right:14px;
   width:38px; height:38px; border-radius:50%;
   display:flex; align-items:center; justify-content:center;
-  font-size:17px; line-height:1;
+  font-size:16px; line-height:1;
+  background:var(--surface-elevated); color:var(--text-muted);
+  border:1px solid var(--border);
 }
-.metric-icon-sun{background:var(--tag-demo-bg); color:var(--tag-demo-fg);}
-.metric-icon-temp{background:var(--tag-model-bg); color:var(--tag-model-fg);}
-.metric-icon-comfort{background:var(--tag-input-bg); color:var(--tag-input-fg);}
-.metric-icon-heat{background:var(--error-bg); color:var(--bad);}
+.metric-icon-sun, .metric-icon-temp, .metric-icon-comfort, .metric-icon-heat{
+  background:var(--surface-elevated); color:var(--text-muted);
+}
 
 /* Status callouts (replace ad-hoc inline styles so dark mode can reach them) */
 .callout-warn{background:var(--tag-demo-bg); border-color:var(--data-illus-border);}
@@ -248,7 +296,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .chart-point{fill:var(--accent); opacity:.75;}
 
 .chart-crosshair{stroke:var(--text-faint); stroke-width:1; stroke-dasharray:3 3;}
-.chart-tooltip{position:absolute; top:14px; background:#212121; color:#fff; font-size:11px; padding:8px 10px; border-radius:var(--radius-card); pointer-events:none; z-index:5; box-shadow:0 6px 18px rgba(0,0,0,.25); min-width:150px;}
+.chart-tooltip{position:absolute; top:14px; background:var(--tooltip-bg); color:#fff; font-size:11px; padding:8px 10px; border-radius:var(--radius-card); pointer-events:none; z-index:5; box-shadow:0 6px 18px rgba(0,0,0,.25); min-width:150px;}
 .chart-tooltip i{width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:5px;}
 .chart-tooltip b{display:block; margin-bottom:3px;}
 .chart-tooltip div{white-space:nowrap;}
@@ -328,7 +376,7 @@ td.num{font-family:var(--mono); text-align:right;}
 
 /* Dashboard — explore-the-platform tiles */
 .nav-tile{display:block; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm); transition:border-color .15s, box-shadow .15s, transform .15s;}
-.nav-tile:hover{border-color:var(--accent); box-shadow:0 2px 10px rgba(25,118,210,.12); transform:translateY(-1px);}
+.nav-tile:hover{border-color:var(--accent); box-shadow:0 2px 10px rgba(19,175,192,.15); transform:translateY(-1px); background:var(--surface-hover);}
 .nav-tile-icon{font-size:20px; margin-bottom:8px;}
 .nav-tile-title{font-size:13.5px; font-weight:700; color:var(--text); margin-bottom:4px;}
 .nav-tile-desc{font-size:12px; color:var(--text-muted); line-height:1.45;}
@@ -447,7 +495,7 @@ td.num{font-family:var(--mono); text-align:right;}
     <div class="modal">
       <div class="modal-header">
         <h3 id="explainTitle">Explain Calculation</h3>
-        <button id="explainClose" class="modal-close">✕</button>
+        <button id="explainClose" class="modal-close" aria-label="Close">✕</button>
       </div>
       <div class="modal-body" id="explainBody"></div>
     </div>
@@ -457,7 +505,7 @@ td.num{font-family:var(--mono); text-align:right;}
 /* AreaTherm — 3D shelter preview (Vanilla Three.js, ES module, no build step).
    Loaded via an import map (see index.html) — no bundler, matching the rest
    of this project's zero-build-step architecture. Renders a parametric
-   shelter — box, cylinder, dome, or L-shaped extrusion, matching whichever
+   shelter — box, cylinder, half-cylinder, dome, or L-shaped extrusion, matching whichever
    shape engine.js's computeGeometry() actually computes for — with door/
    window placeholders on their configured face, and a sun that orbits the
    building on a fixed-elevation circle driven by `sunAngle`.
@@ -483,6 +531,13 @@ const WINDOW_SIZE = { w: 1.1, h: 1.2 };
 const SUN_ELEVATION_DEG = 38;            // fixed height angle the sun orbits at
 const ROUND_ARC_DEG = 70;                // arc a round shape's openings are allowed to spread across, per face
 const FACE_ANGLE_DEG = { FRONT: 0, RIGHT: 90, BACK: 180, LEFT: 270 }; // matches ui-1.js's edgeOf() convention
+// SEMI_CIRCULAR's curved wall only physically exists across [-90deg,90deg]
+// (see _addSemiCylinder) — FRONT stays at the arc's peak, but LEFT/RIGHT
+// are pulled in from the full circle's +-90deg to +-55deg so a +-35deg
+// (ROUND_ARC_DEG/2) spread of openings lands exactly at, not past, the
+// arc's real edge. BACK has no curved wall at all — it's the flat wall,
+// handled separately (see _placeOnFaceSemiCircular).
+const SEMI_FACE_ANGLE_DEG = { FRONT: 0, RIGHT: 55, LEFT: -55 };
 
 export class Shelter3D {
   /** @param {HTMLCanvasElement} canvas */
@@ -550,7 +605,7 @@ export class Shelter3D {
     // stays visible (and correctly lit — MeshLambertMaterial flips the
     // normal for back-facing fragments automatically) no matter which way
     // a given face happens to wind.
-    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xe3f2fd, side: THREE.DoubleSide });
+    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xE1F5F7, side: THREE.DoubleSide });
     this.wallGroup = new THREE.Group(); // holds whichever geometry the current shape needs (1 mesh for box/cylinder, 2 for dome, 1 extrusion for L-shape)
     this.shelterGroup.add(this.wallGroup);
 
@@ -559,7 +614,7 @@ export class Shelter3D {
     // outside the building (PlaneGeometry only renders its front face by
     // default, and that face points inward here).
     this.doorMaterial = new THREE.MeshLambertMaterial({ color: 0x5a3d2b, side: THREE.DoubleSide });
-    this.windowMaterial = new THREE.MeshLambertMaterial({ color: 0x2196f3, side: THREE.DoubleSide });
+    this.windowMaterial = new THREE.MeshLambertMaterial({ color: 0x13AFC0, side: THREE.DoubleSide });
     this.openingsGroup = new THREE.Group();
     this.shelterGroup.add(this.openingsGroup);
   }
@@ -661,8 +716,10 @@ export class Shelter3D {
 
   _rebuildGeometry(shape, width, length, height, diameter, lengthA, widthA, lengthB, widthB) {
     this._clearWallGroup();
-    if (shape === "CIRCULAR" || shape === "SEMI_CIRCULAR") {
+    if (shape === "CIRCULAR") {
       this._addCylinder(diameter, height);
+    } else if (shape === "SEMI_CIRCULAR") {
+      this._addSemiCylinder(diameter, height);
     } else if (shape === "DOME") {
       this._addCylinder(diameter, height);
       this._addDomeCap(diameter, height);
@@ -675,15 +732,44 @@ export class Shelter3D {
     }
   }
 
-  // Flat-roofed cylinder — matches engine.js's computeGeometry(), which
-  // gives CIRCULAR and SEMI_CIRCULAR the same floor/roof-area formulas
-  // (a true half-circle footprint isn't actually modeled anywhere yet, so
-  // this view doesn't invent one either — both render as a full drum).
+  // Flat-roofed cylinder — matches engine.js's computeGeometry() CIRCULAR
+  // treatment (full-circle floor, flat roof of the same area).
   _addCylinder(diameter, height) {
     const r = (diameter || 5) / 2;
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, height, 32), this.wallMaterial);
     mesh.position.set(0, height / 2, 0);
     this.wallGroup.add(mesh);
+  }
+
+  // A genuine half-circle footprint — matches engine.js's computeGeometry()
+  // SEMI_CIRCULAR treatment (half the floor area of CIRCULAR at the same
+  // diameter, a straight wall closing off the flat side). Built from a
+  // half-swept CylinderGeometry (thetaStart=90deg, thetaLength=180deg in
+  // Three's convention) for the curved wall + its own half-disk top/bottom
+  // caps, plus one flat PlaneGeometry for the straight wall.
+  //
+  // Three's cylinder vertex formula is (x,z) = r*(sin(u), cos(u)) for
+  // u = thetaStart + t*thetaLength. Choosing thetaStart=PI/2, thetaLength=PI
+  // sweeps u over [90deg,270deg], i.e. exactly the z<=0 half of the circle —
+  // matching _placeOnFaceRound's FRONT convention (angle 0 -> position
+  // (0,y,-r), the -Z direction) so the arc's peak (u=180deg -> (0,-r)) lands
+  // at FRONT, and its two straight edges (u=90deg -> (r,0), u=270deg ->
+  // (-r,0)) land exactly where the flat wall must meet it.
+  _addSemiCylinder(diameter, height) {
+    const r = (diameter || 5) / 2;
+    const arc = new THREE.Mesh(
+      new THREE.CylinderGeometry(r, r, height, 32, 1, false, Math.PI / 2, Math.PI),
+      this.wallMaterial
+    );
+    arc.position.set(0, height / 2, 0);
+    this.wallGroup.add(arc);
+
+    // Flat wall: PlaneGeometry's local XY plane (X=width, Y=height, normal
+    // along Z) already matches world (X, Y, Z=0) with no rotation needed —
+    // it spans the full diameter along X, closing the straight edge at Z=0.
+    const flat = new THREE.Mesh(new THREE.PlaneGeometry(diameter || 5, height), this.wallMaterial);
+    flat.position.set(0, height / 2, 0);
+    this.wallGroup.add(flat);
   }
 
   // A hemispherical cap sitting on top of the cylinder body — engine.js
@@ -765,6 +851,26 @@ export class Shelter3D {
     this.openingsGroup.add(mesh);
   }
 
+  // SEMI_CIRCULAR only: FRONT/LEFT/RIGHT sit on the curved wall (same
+  // formula as _placeOnFaceRound, but remapped via SEMI_FACE_ANGLE_DEG so
+  // they stay on the half that's actually built — see _addSemiCylinder).
+  // BACK has no curved wall at all; it's the flat diameter wall at Z=0.
+  _placeOnFaceSemiCircular(material, w, h, y, face, along, r) {
+    if (face === "BACK") {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+      mesh.position.set(along, y, 0.02); // flat wall is at Z=0; outward (away from the arc) is +Z
+      this.openingsGroup.add(mesh);
+      return;
+    }
+    const faceAngleRad = THREE.MathUtils.degToRad(SEMI_FACE_ANGLE_DEG[face] ?? 0);
+    const theta = faceAngleRad + along / r;
+    const rOut = r + 0.02;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+    mesh.rotation.y = theta;
+    mesh.position.set(rOut * Math.sin(theta), y, -rOut * Math.cos(theta));
+    this.openingsGroup.add(mesh);
+  }
+
   // Maps FRONT/BACK/LEFT/RIGHT onto the L-tromino's actual edges: FRONT is
   // wing A's full-width front edge; BACK is wing B's (narrower) back edge;
   // LEFT is the one continuous full-depth wall both wings share; RIGHT is
@@ -809,10 +915,14 @@ export class Shelter3D {
     }
 
     let spanOf, place;
-    if (shape === "CIRCULAR" || shape === "DOME" || shape === "SEMI_CIRCULAR") {
+    if (shape === "CIRCULAR" || shape === "DOME") {
       const r = (diameter || 5) / 2;
       spanOf = () => r * THREE.MathUtils.degToRad(ROUND_ARC_DEG);
       place = (material, w, h, y, face, along) => this._placeOnFaceRound(material, w, h, y, face, along, r);
+    } else if (shape === "SEMI_CIRCULAR") {
+      const r = (diameter || 5) / 2;
+      spanOf = (face) => face === "BACK" ? (diameter || 5) : r * THREE.MathUtils.degToRad(ROUND_ARC_DEG);
+      place = (material, w, h, y, face, along) => this._placeOnFaceSemiCircular(material, w, h, y, face, along, r);
     } else if (shape === "L_SHAPE") {
       const wA = widthA || 4, lB = lengthB || 3, lA = lengthA || 4;
       const wB = Math.min(widthB || 3, lA);
@@ -2026,15 +2136,28 @@ window.APP_ENGINE = (function () {
   function computeGeometry(design, latitude) {
     let L = design.length || 6, W = design.width || 4, H = design.height || 3;
     let floorArea, roofArea, perimeter;
-    const isRound = design.shape === "CIRCULAR" || design.shape === "DOME" || design.shape === "SEMI_CIRCULAR";
+    const isSemiCircular = design.shape === "SEMI_CIRCULAR";
+    const isRound = design.shape === "CIRCULAR" || design.shape === "DOME" || isSemiCircular;
     const isLShape = design.shape === "L_SHAPE";
     if (isRound) {
       const d = design.diameter || Math.max(L, W) || 5;
       const r = d / 2;
-      floorArea = Math.PI * r * r;
-      perimeter = Math.PI * d;
-      roofArea = (design.shape === "DOME") ? 2 * Math.PI * r * r : floorArea;
-      L = W = d;
+      if (isSemiCircular) {
+        // A genuine half-circle footprint (a straight wall across the full
+        // diameter, closing off a half-disk floor) — not the same shape as
+        // CIRCULAR at the same diameter, so it must not share its area
+        // formulas. Flat roof, same area as the floor (like CIRCULAR, not
+        // domed like DOME).
+        floorArea = (Math.PI * r * r) / 2;
+        perimeter = d + Math.PI * r; // straight diameter wall + the half-circumference arc
+        roofArea = floorArea;
+        L = d; W = r; // bounding box: full diameter one way, radius the other
+      } else {
+        floorArea = Math.PI * r * r;
+        perimeter = Math.PI * d;
+        roofArea = (design.shape === "DOME") ? 2 * Math.PI * r * r : floorArea;
+        L = W = d;
+      }
     } else if (isLShape) {
       // Two rectangular wings sharing a corner — wing B sits atop the left
       // portion of wing A's far edge (a standard L-tromino layout). Area
@@ -2796,10 +2919,10 @@ window.APP_CHARTS = (function () {
   // kept as literals here rather than read via getComputedStyle since
   // these SVG charts are drawn directly as DOM nodes, not through CSS.
   const TEMP_ZONES = [
-    { max: 15, color: "#1976d2", label: "Cold (<15°C)" },
-    { max: 27, color: "#4caf50", label: "Comfortable (15–27°C)" },
-    { max: 32, color: "#fbc02d", label: "Warm (27–32°C)" },
-    { max: Infinity, color: "#d32f2f", label: "Hot (>32°C)" }
+    { max: 15, color: "#13AFC0", label: "Cold (<15°C)" },
+    { max: 27, color: "#218A62", label: "Comfortable (15–27°C)" },
+    { max: 32, color: "#D97732", label: "Warm (27–32°C)" },
+    { max: Infinity, color: "#C24850", label: "Hot (>32°C)" }
   ];
   function zoneColorFor(temp) { return (TEMP_ZONES.find(z => temp <= z.max) || TEMP_ZONES[TEMP_ZONES.length - 1]).color; }
 
@@ -3005,8 +3128,12 @@ window.APP_CHARTS = (function () {
   // Net balance is called out separately below the bar (it's a derived
   // summary value, not a stackable segment).
   function stackedHeatBalanceChart(container, daily) {
-    const GAIN_COLOR = ["#2f9d55", "#5cbf7d"];
-    const LOSS_COLOR = ["#c93b3b", "#d9695f", "#e08a5a", "#b4544a", "#8a5ac9"];
+    // Same shared heat-flow-component palette as the two charts above
+    // (Solar/Internal for gains; Wall/Roof/Floor/Opening/Ventilation/
+    // ThermalMass for losses, matched by position here since this chart's
+    // gains/losses arrays are built dynamically rather than name-keyed).
+    const GAIN_COLOR = ["#D97732", "#C9A227"];
+    const LOSS_COLOR = ["#B0524F", "#C97A6B", "#8B4A3F", "#6B7A85", "#2A9DAC", "#6B8F71"];
     const gains = [
       { label: "Solar Input", value: daily.solarKwh },
       { label: "Internal Gains", value: daily.internalKwh }
@@ -3085,16 +3212,23 @@ window.APP_CHARTS = (function () {
     const ml = 50, mr = 16, mt = 14, mb = 34;
     const plotW = width - ml - mr, plotH = height - mt - mb;
 
+    // Shared 8-color heat-flow-component palette (kept in sync with the
+    // stacked-hourly variant below — same component, same color in both
+    // charts, which wasn't true before this pass). Muted, coherent hue
+    // family rather than the brightest-available Material hues: amber for
+    // gains, red-brown for envelope losses, slate/cyan for air-movement
+    // losses — distinct enough to read as 8 series, restrained enough to
+    // match the rest of the interface.
     const GAIN_SERIES = [
-      { key: "qSolarWindow", label: "Solar Input", color: "#e8a23c" },
-      { key: "qInternal", label: "Internal Gains", color: "#d9cf3c" }
+      { key: "qSolarWindow", label: "Solar Input", color: "#D97732" },
+      { key: "qInternal", label: "Internal Gains", color: "#C9A227" }
     ];
     const LOSS_SERIES = [
-      { key: "qWall", label: "Wall Loss", color: "#c93b3b" },
-      { key: "qRoof", label: "Roof Loss", color: "#e06a6a" },
-      { key: "qFloor", label: "Floor Loss", color: "#a52d2d" },
-      { key: "qOpening", label: "Opening Loss", color: "#e08a5a" },
-      { key: "qVent", label: "Ventilation Loss", color: "#8a5ac9" }
+      { key: "qWall", label: "Wall Loss", color: "#B0524F" },
+      { key: "qRoof", label: "Roof Loss", color: "#C97A6B" },
+      { key: "qFloor", label: "Floor Loss", color: "#8B4A3F" },
+      { key: "qOpening", label: "Opening Loss", color: "#6B7A85" },
+      { key: "qVent", label: "Ventilation Loss", color: "#2A9DAC" }
     ];
     const rows = series.map(s => ({
       hourDecimal: s.hourDecimal,
@@ -3168,7 +3302,7 @@ window.APP_CHARTS = (function () {
 
     const legend = document.createElement("div");
     legend.className = "chart-legend";
-    GAIN_SERIES.concat(LOSS_SERIES).concat([{ label: "Net", color: "#212121" }]).forEach(s => {
+    GAIN_SERIES.concat(LOSS_SERIES).concat([{ label: "Net", color: "#172126" }]).forEach(s => {
       const item = document.createElement("span");
       item.className = "chart-legend-item";
       item.innerHTML = `<i style="background:${s.color}"></i>${s.label}`;
@@ -3214,15 +3348,18 @@ window.APP_CHARTS = (function () {
     const width = opts.width || 720, height = opts.height || 300;
     const ml = 50, mr = 16, mt = 14, mb = 30;
     const plotW = width - ml - mr, plotH = height - mt - mb;
+    // Same 8-color family as the hourly-breakdown chart above — see its
+    // comment. "mass" (thermal mass exchange) is the one component unique
+    // to this chart, given its own sage-green tone.
     const seriesDefs = [
-      { key: "solar", name: "Solar input", color: "#d98a12" },
-      { key: "internal", name: "Internal gains", color: "#7a5cff" },
-      { key: "wall", name: "Wall loss", color: "#c93b3b" },
-      { key: "roof", name: "Roof loss", color: "#e0745f" },
-      { key: "floor", name: "Floor loss", color: "#c9793b" },
-      { key: "opening", name: "Opening loss", color: "#1f8a9e" },
-      { key: "vent", name: "Ventilation loss", color: "#2fb8cf" },
-      { key: "mass", name: "Thermal mass exchange", color: "#5b8c5a" }
+      { key: "solar", name: "Solar input", color: "#D97732" },
+      { key: "internal", name: "Internal gains", color: "#C9A227" },
+      { key: "wall", name: "Wall loss", color: "#B0524F" },
+      { key: "roof", name: "Roof loss", color: "#C97A6B" },
+      { key: "floor", name: "Floor loss", color: "#8B4A3F" },
+      { key: "opening", name: "Opening loss", color: "#6B7A85" },
+      { key: "vent", name: "Ventilation loss", color: "#2A9DAC" },
+      { key: "mass", name: "Thermal mass exchange", color: "#6B8F71" }
     ];
     const allVals = rows.flatMap(r => seriesDefs.map(s => r[s.key] || 0));
     const maxAbs = Math.max(50, ...allVals.map(Math.abs));
@@ -4149,13 +4286,13 @@ window.UI = window.UI || {};
       `;
     const hours = Array.from({ length: 25 }, (_, i) => i);
     CH.lineChart(U.qs("#climateChart", box), [
-      { name: "Ambient Temp (°C)", color: "#d32f2f", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
+      { name: "Ambient Temp (°C)", color: "#7B8A90", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
     ], { height: 200, yLabel: "°C", xLabel: "Hour of day", tempZones: true });
     const solarDiv = document.createElement("div");
     solarDiv.style.marginTop = "10px";
     U.qs("#climateChart", box).appendChild(solarDiv);
     CH.lineChart(solarDiv, [
-      { name: "Solar Irradiance (W/m²)", color: "#ff9800", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
+      { name: "Solar Irradiance (W/m²)", color: "#D97732", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
     ], { height: 180, yLabel: "W/m²", xLabel: "Hour of day" });
 
     if (s.location && s.location.solarDataSource && s.location.solarDataSource.monthlyTemp) {
@@ -4165,7 +4302,7 @@ window.UI = window.UI || {};
         monthlyTemp.map(m => ({ label: m.month, mean: m.tempC, min: m.tempMinC, max: m.tempMaxC })),
         { height: 220, yLabel: "°C" });
       CH.lineChart(U.qs("#monthlySolarChart", box), [
-        { name: "Solar (kWh/m²/day)", color: "#ff9800", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
+        { name: "Solar (kWh/m²/day)", color: "#D97732", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
       ], { height: 220, yLabel: "kWh/m²/day", xFormat: (x) => monthlyGhi[Math.round(x)] ? monthlyGhi[Math.round(x)].month : "" });
       const hottest = monthlyTemp.reduce((a, b) => (b.tempC > a.tempC ? b : a));
       const coldest = monthlyTemp.reduce((a, b) => (b.tempC < a.tempC ? b : a));
@@ -4313,7 +4450,7 @@ window.UI = window.UI || {};
           if (btn) btn.addEventListener("click", () => { map.closePopup(); loadLocationById(l.id); });
         });
       });
-      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#1976d2", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
+      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#13AFC0", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
     }
 
     wireComfortCard(root);
@@ -4444,8 +4581,15 @@ window.UI = window.UI || {};
     const w = overallL * scale, h = overallW * scale;
     const bearing = bearingOf(design);
     let shapeSvg;
-    if (isRound) {
-      shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
+    if (design.shape === "SEMI_CIRCULAR") {
+      // Genuine half-disk footprint (see engine.js computeGeometry): a
+      // straight wall across the full diameter (drawn at the BACK, larger
+      // y) closing off a half-circle that bulges toward the FRONT (smaller
+      // y) — geom.L is the full diameter (=w here), geom.W is just the
+      // radius (=h here), so the arc's radius is exactly w/2 (== h).
+      shapeSvg = `<path d="M ${cx - w / 2} ${cy + h / 2} A ${w / 2} ${w / 2} 0 0 1 ${cx + w / 2} ${cy + h / 2} Z" fill="#E1F5F7" stroke="#13AFC0" stroke-width="2"/>`;
+    } else if (isRound) {
+      shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#E1F5F7" stroke="#13AFC0" stroke-width="2"/>`;
     } else if (isLShape) {
       const lApx = (design.lengthA || 4) * scale, wApx = (design.widthA || 4) * scale, wBpx = Math.min((design.widthB || 3) * scale, lApx);
       const ox = cx - w / 2, oy = cy - h / 2;
@@ -4453,9 +4597,9 @@ window.UI = window.UI || {};
         [ox, oy + h], [ox + lApx, oy + h], [ox + lApx, oy + h - wApx],
         [ox + wBpx, oy + h - wApx], [ox + wBpx, oy], [ox, oy]
       ];
-      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
+      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#E1F5F7" stroke="#13AFC0" stroke-width="2"/>`;
     } else {
-      shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
+      shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#E1F5F7" stroke="#13AFC0" stroke-width="2"/>`;
     }
 
     // Opening marks (doors, windows) on their actual configured face
@@ -4485,9 +4629,9 @@ window.UI = window.UI || {};
       const face = win.orientation || "FRONT";
       winCountByFace[face] = (winCountByFace[face] || 0) + (win.count || 0);
     });
-    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#2196f3")).join("");
+    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#0C93A3")).join("");
     const door = design.doors && design.doors[0];
-    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#e65100") : "";
+    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#D97732") : "";
 
     const labelOffset = 16;
     const edges = isRound ? [] : [
@@ -4728,7 +4872,7 @@ window.UI = window.UI || {};
             <h3>3D Preview <span class="tag tag-demo">illustrative</span></h3>
             <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:var(--radius-card); cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
-            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and each window group below are shown on their own configured face — each window group's face also drives its own share of the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
+            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and each window group below are shown on their own configured face — each window group's face also drives its own share of the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : d.shape === "SEMI_CIRCULAR" ? "A genuine half-circle footprint — a straight wall closes the flat side (shown facing BACK), with floor, wall and roof areas calculated as exactly half of a full circle at the same diameter, not the same footprint as CIRCULAR." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>Derived Geometry <span class="tag tag-model">calculated</span></h3>
@@ -5760,8 +5904,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
     if (result) {
       const dt = s.simConfig.timeStepMinutes / 60;
       CH.lineChart(U.qs("#tempChart", root), [
-        { name: "Indoor Temp", color: "#1976d2", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tIndoor })) },
-        { name: "Ambient Temp", color: "#d32f2f", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tAmb })) }
+        { name: "Indoor Temp", color: "#13AFC0", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tIndoor })) },
+        { name: "Ambient Temp", color: "#7B8A90", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tAmb })) }
       ], { height: 260, yLabel: "°C", xLabel: "Hours from simulation start", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max }, tempZones: true });
       const stepsPerDay = Math.round(24 * 60 / s.simConfig.timeStepMinutes);
       CH.hourlyHeatFlowChart(U.qs("#hourlyHeatFlowDiv", root), result.series.slice(0, stepsPerDay), { height: 280, yLabel: "W", xLabel: "Hour of day" });
@@ -6111,8 +6255,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         </div>`;
       const dt = s.simConfig.timeStepMinutes / 60;
       CH.lineChart(U.qs("#whatifChart", wrap), [
-        { name: "Before", color: "#9e9e9e", data: beforeRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) },
-        { name: "After", color: "#1976d2", data: afterRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) }
+        { name: "Before", color: "#7B8A90", data: beforeRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) },
+        { name: "After", color: "#13AFC0", data: afterRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) }
       ], { height: 240, yLabel: "°C", xLabel: "Hours", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max }, tempZones: true });
     }, root);
   };
@@ -6964,7 +7108,7 @@ window.APP = (function () {
     if (!t) {
       t = document.createElement("div");
       t.id = "appToast";
-      t.style.cssText = "position:fixed;bottom:20px;right:24px;background:#212121;color:#fff;padding:10px 16px;border-radius:var(--radius-card);font-size:12.5px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s;display:flex;align-items:center;gap:12px;max-width:360px;";
+      t.style.cssText = "position:fixed;bottom:20px;right:24px;background:var(--tooltip-bg);color:#fff;padding:10px 16px;border-radius:var(--radius-card);font-size:12.5px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s;display:flex;align-items:center;gap:12px;max-width:360px;";
       document.body.appendChild(t);
     }
     t.innerHTML = "";

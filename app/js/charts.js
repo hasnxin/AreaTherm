@@ -30,10 +30,10 @@ window.APP_CHARTS = (function () {
   // kept as literals here rather than read via getComputedStyle since
   // these SVG charts are drawn directly as DOM nodes, not through CSS.
   const TEMP_ZONES = [
-    { max: 15, color: "#1976d2", label: "Cold (<15°C)" },
-    { max: 27, color: "#4caf50", label: "Comfortable (15–27°C)" },
-    { max: 32, color: "#fbc02d", label: "Warm (27–32°C)" },
-    { max: Infinity, color: "#d32f2f", label: "Hot (>32°C)" }
+    { max: 15, color: "#13AFC0", label: "Cold (<15°C)" },
+    { max: 27, color: "#218A62", label: "Comfortable (15–27°C)" },
+    { max: 32, color: "#D97732", label: "Warm (27–32°C)" },
+    { max: Infinity, color: "#C24850", label: "Hot (>32°C)" }
   ];
   function zoneColorFor(temp) { return (TEMP_ZONES.find(z => temp <= z.max) || TEMP_ZONES[TEMP_ZONES.length - 1]).color; }
 
@@ -239,8 +239,12 @@ window.APP_CHARTS = (function () {
   // Net balance is called out separately below the bar (it's a derived
   // summary value, not a stackable segment).
   function stackedHeatBalanceChart(container, daily) {
-    const GAIN_COLOR = ["#2f9d55", "#5cbf7d"];
-    const LOSS_COLOR = ["#c93b3b", "#d9695f", "#e08a5a", "#b4544a", "#8a5ac9"];
+    // Same shared heat-flow-component palette as the two charts above
+    // (Solar/Internal for gains; Wall/Roof/Floor/Opening/Ventilation/
+    // ThermalMass for losses, matched by position here since this chart's
+    // gains/losses arrays are built dynamically rather than name-keyed).
+    const GAIN_COLOR = ["#D97732", "#C9A227"];
+    const LOSS_COLOR = ["#B0524F", "#C97A6B", "#8B4A3F", "#6B7A85", "#2A9DAC", "#6B8F71"];
     const gains = [
       { label: "Solar Input", value: daily.solarKwh },
       { label: "Internal Gains", value: daily.internalKwh }
@@ -319,16 +323,23 @@ window.APP_CHARTS = (function () {
     const ml = 50, mr = 16, mt = 14, mb = 34;
     const plotW = width - ml - mr, plotH = height - mt - mb;
 
+    // Shared 8-color heat-flow-component palette (kept in sync with the
+    // stacked-hourly variant below — same component, same color in both
+    // charts, which wasn't true before this pass). Muted, coherent hue
+    // family rather than the brightest-available Material hues: amber for
+    // gains, red-brown for envelope losses, slate/cyan for air-movement
+    // losses — distinct enough to read as 8 series, restrained enough to
+    // match the rest of the interface.
     const GAIN_SERIES = [
-      { key: "qSolarWindow", label: "Solar Input", color: "#e8a23c" },
-      { key: "qInternal", label: "Internal Gains", color: "#d9cf3c" }
+      { key: "qSolarWindow", label: "Solar Input", color: "#D97732" },
+      { key: "qInternal", label: "Internal Gains", color: "#C9A227" }
     ];
     const LOSS_SERIES = [
-      { key: "qWall", label: "Wall Loss", color: "#c93b3b" },
-      { key: "qRoof", label: "Roof Loss", color: "#e06a6a" },
-      { key: "qFloor", label: "Floor Loss", color: "#a52d2d" },
-      { key: "qOpening", label: "Opening Loss", color: "#e08a5a" },
-      { key: "qVent", label: "Ventilation Loss", color: "#8a5ac9" }
+      { key: "qWall", label: "Wall Loss", color: "#B0524F" },
+      { key: "qRoof", label: "Roof Loss", color: "#C97A6B" },
+      { key: "qFloor", label: "Floor Loss", color: "#8B4A3F" },
+      { key: "qOpening", label: "Opening Loss", color: "#6B7A85" },
+      { key: "qVent", label: "Ventilation Loss", color: "#2A9DAC" }
     ];
     const rows = series.map(s => ({
       hourDecimal: s.hourDecimal,
@@ -402,7 +413,7 @@ window.APP_CHARTS = (function () {
 
     const legend = document.createElement("div");
     legend.className = "chart-legend";
-    GAIN_SERIES.concat(LOSS_SERIES).concat([{ label: "Net", color: "#212121" }]).forEach(s => {
+    GAIN_SERIES.concat(LOSS_SERIES).concat([{ label: "Net", color: "#172126" }]).forEach(s => {
       const item = document.createElement("span");
       item.className = "chart-legend-item";
       item.innerHTML = `<i style="background:${s.color}"></i>${s.label}`;
@@ -448,15 +459,18 @@ window.APP_CHARTS = (function () {
     const width = opts.width || 720, height = opts.height || 300;
     const ml = 50, mr = 16, mt = 14, mb = 30;
     const plotW = width - ml - mr, plotH = height - mt - mb;
+    // Same 8-color family as the hourly-breakdown chart above — see its
+    // comment. "mass" (thermal mass exchange) is the one component unique
+    // to this chart, given its own sage-green tone.
     const seriesDefs = [
-      { key: "solar", name: "Solar input", color: "#d98a12" },
-      { key: "internal", name: "Internal gains", color: "#7a5cff" },
-      { key: "wall", name: "Wall loss", color: "#c93b3b" },
-      { key: "roof", name: "Roof loss", color: "#e0745f" },
-      { key: "floor", name: "Floor loss", color: "#c9793b" },
-      { key: "opening", name: "Opening loss", color: "#1f8a9e" },
-      { key: "vent", name: "Ventilation loss", color: "#2fb8cf" },
-      { key: "mass", name: "Thermal mass exchange", color: "#5b8c5a" }
+      { key: "solar", name: "Solar input", color: "#D97732" },
+      { key: "internal", name: "Internal gains", color: "#C9A227" },
+      { key: "wall", name: "Wall loss", color: "#B0524F" },
+      { key: "roof", name: "Roof loss", color: "#C97A6B" },
+      { key: "floor", name: "Floor loss", color: "#8B4A3F" },
+      { key: "opening", name: "Opening loss", color: "#6B7A85" },
+      { key: "vent", name: "Ventilation loss", color: "#2A9DAC" },
+      { key: "mass", name: "Thermal mass exchange", color: "#6B8F71" }
     ];
     const allVals = rows.flatMap(r => seriesDefs.map(s => r[s.key] || 0));
     const maxAbs = Math.max(50, ...allVals.map(Math.abs));
