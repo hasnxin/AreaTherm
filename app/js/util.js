@@ -9,6 +9,28 @@ window.U = {
   on(sel, evt, fn, root) { const e = this.qs(sel, root); if (e) e.addEventListener(evt, fn); },
   esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); },
 
+  // Shape-aware dimension text for a design. design.length/width only hold
+  // meaningful values for a RECTANGULAR footprint: SQUARE overrides width
+  // to match length inside computeGeometry (so the raw stored value can be
+  // stale or just unused), and round/L-shaped designs use entirely
+  // different fields (diameter, or the L-shape's wing dimensions). Every
+  // place that displays "the shelter's dimensions" should call this rather
+  // than reading design.length/width/diameter directly, so they can't
+  // silently drift out of sync with what computeGeometry actually uses.
+  shapeDimensionsText(design) {
+    if (design.shape === "L_SHAPE") {
+      return `Wing A ${design.lengthA || 4}m × ${design.widthA || 4}m + Wing B ${design.lengthB || 3}m × ${design.widthB || 3}m, ${design.height}m height`;
+    }
+    if (["CIRCULAR", "DOME", "SEMI_CIRCULAR"].includes(design.shape)) {
+      return `⌀ ${design.diameter || 5}m, ${design.height}m height`;
+    }
+    if (design.shape === "SQUARE") {
+      const geom = window.APP_ENGINE.computeGeometry(design);
+      return `${geom.L}m × ${geom.L}m × ${design.height}m`;
+    }
+    return `${design.length}m × ${design.width}m × ${design.height}m`;
+  },
+
   // Trailing-edge debounce: fn runs `delay` ms after the last call. The
   // returned function also exposes .flush() (run immediately, e.g. on blur)
   // and .cancel() (drop any pending call).

@@ -36,8 +36,16 @@
   /* Spacing scale — applied to macro layout spacing (page/card/grid gaps),
      not forced onto every micro-component padding. */
   --spacing-xs:4px; --spacing-sm:8px; --spacing-md:16px; --spacing-lg:24px; --spacing-xl:32px;
-  /* Type scale */
-  --text-heading:24px; --text-subheading:18px; --text-body:14px; --line-height:1.5;
+  /* Type scale — a UI-sans modular scale (the same family Inter/Geist Sans
+     sit in; see the --sans stack). --text-display is for the rare large
+     standalone number (hero/report headline); everything else maps to an
+     existing use. */
+  --text-display:32px; --text-heading:24px; --text-subheading:18px; --text-body:14px; --text-sm:13px; --text-label:11px; --line-height:1.5;
+  /* Tracking (letter-spacing) — the two ends of the scale need opposite
+     correction: large text (24px+) sits too loose at a UI sans's default
+     spacing, small uppercase text sits too tight. Body text (13-15px)
+     needs neither and stays at the type-family default (0). */
+  --tracking-tight:-0.02em; --tracking-wide:.04em;
   /* Elevation — subtle in light mode, near-flat in dark (dark mode relies on
      tonal surface steps for depth, not shadow — see --surface-elevated). */
   --shadow-sm:0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
@@ -108,7 +116,7 @@ button{font-family:inherit; cursor:pointer;}
 .sidebar-close{display:none; position:absolute; right:14px; top:-2px; background:none; border:none; color:#b9cad8; font-size:18px; padding:4px;}
 .brand-mark{width:34px; height:34px; border-radius:8px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;}
 .brand-name{font-weight:700; font-size:15px; color:#fff;}
-.brand-sub{font-size:10.5px; color:#8ea9bc; letter-spacing:.03em;}
+.brand-sub{font-size:10.5px; color:#8ea9bc; letter-spacing:var(--tracking-wide);}
 .nav{display:flex; flex-direction:column; padding:14px 10px; gap:2px; flex:1; overflow-y:auto;}
 .nav a{display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:8px; font-size:13px; color:#b9cad8; transition:background .12s;}
 .nav-icon{font-size:14px; line-height:1; flex-shrink:0; width:16px; text-align:center;}
@@ -142,8 +150,8 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 }
 .sidebar-backdrop{display:none; position:fixed; inset:0; background:rgba(8,14,20,.5); z-index:40;}
 .topbar-project{display:flex; flex-direction:column; min-width:0;}
-.topbar-label{font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint);}
-.topbar-value{font-weight:600; font-size:14px;}
+.topbar-label{font-size:10px; text-transform:uppercase; letter-spacing:var(--tracking-wide); color:var(--text-faint);}
+.topbar-value{font-weight:600; font-size:14px; font-variant-numeric:tabular-nums;}
 .btn{border:1px solid var(--border); background:var(--panel); padding:8px 14px; border-radius:var(--radius-btn); font-size:12.5px; font-weight:600; color:var(--text);}
 .btn:hover{border-color:var(--accent); color:var(--accent);}
 .btn-accent{background:var(--accent); color:#fff; border-color:var(--accent);}
@@ -171,17 +179,25 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
   to{ opacity:1; transform:translateY(0); }
 }
 
-/* Typography helpers */
-h1{font-size:var(--text-heading); margin:0 0 4px; font-weight:700;}
+/* Typography helpers — weight hierarchy: 700 for true headings and the
+   numbers that ARE the point of a card (metric values, big scores); 600 for
+   interactive/selected chrome (buttons, active nav, labels) and small
+   emphasis (recommend-item values, nav-tile titles); 400 everywhere else.
+   "Light" text is never a lighter font-weight here (thin strokes hurt
+   legibility at 11-14px, which is most of this UI) — secondary/tertiary
+   text gets there via --text-muted/--text-faint color instead, at the same
+   weight as its surrounding text. There is no 300-weight rule anywhere in
+   this file; keep it that way. */
+h1{font-size:var(--text-heading); margin:0 0 4px; font-weight:700; letter-spacing:var(--tracking-tight);}
 h2{font-size:var(--text-subheading); margin:0 0 12px; font-weight:700;}
-h3{font-size:13.5px; margin:0 0 8px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted);}
+h3{font-size:13.5px; margin:0 0 8px; text-transform:uppercase; letter-spacing:var(--tracking-wide); color:var(--text-muted);}
 .subtitle{color:var(--text-muted); font-size:13px; margin-bottom:20px; line-height:var(--line-height);}
 /* Prose/body copy gets the spec's 1.5x readability line-height; compact UI
    chrome (buttons, nav, tables, tags) keeps its existing tighter spacing —
    applying 1.5 globally would visibly inflate the height of every single-line
    badge/button/table-row across the app. */
 p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
-.tag{display:inline-block; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; padding:2px 8px; border-radius:999px; font-weight:700;}
+.tag{display:inline-block; font-size:10.5px; text-transform:uppercase; letter-spacing:var(--tracking-wide); padding:2px 8px; border-radius:999px; font-weight:700;}
 .tag-demo{background:var(--tag-demo-bg); color:var(--tag-demo-fg);}
 .tag-model{background:var(--tag-model-bg); color:var(--tag-model-fg);}
 .tag-input{background:var(--tag-input-bg); color:var(--tag-input-fg);}
@@ -204,7 +220,7 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
 /* Self-sufficient even without the .card class alongside it (both patterns
    exist in the markup today) — a KPI tile always gets proper chrome. */
 .metric-card{position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm);}
-.metric-card .metric-label{font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px;}
+.metric-card .metric-label{font-size:var(--text-label); color:var(--text-muted); text-transform:uppercase; letter-spacing:var(--tracking-wide); margin-bottom:6px;}
 .metric-card .metric-value{font-size:26px; font-weight:700; font-family:var(--mono); font-variant-numeric:tabular-nums;}
 .metric-card .metric-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
 
@@ -233,7 +249,7 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
 
 /* Forms */
 .form-row{display:flex; flex-direction:column; gap:5px; margin-bottom:12px;}
-.form-row label{font-size:11.5px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.02em;}
+.form-row label{font-size:11.5px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:var(--tracking-wide);}
 .form-row input, .form-row select, .form-row textarea{
   width:100%; min-width:0; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-card); font-size:13px; background:var(--input-bg); color:var(--text); font-family:inherit;
 }
@@ -241,23 +257,23 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
 .form-inline{display:flex; gap:12px; flex-wrap:wrap;}
 .form-inline .form-row{flex:1; min-width:140px;}
 fieldset{border:1px solid var(--border); border-radius:var(--radius-card); padding:14px; margin:0 0 16px;}
-legend{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--accent); padding:0 6px;}
+legend{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:var(--tracking-wide); color:var(--accent); padding:0 6px;}
 
 /* Tables */
 table{width:100%; border-collapse:collapse; font-size:12.5px;}
 th,td{padding:8px 10px; border-bottom:1px solid var(--border); text-align:left;}
-th{font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted); background:var(--th-bg);}
+th{font-size:10.5px; text-transform:uppercase; letter-spacing:var(--tracking-wide); color:var(--text-muted); background:var(--th-bg);}
 th.sortable{cursor:pointer; user-select:none;}
 th.sortable:hover{color:var(--accent);}
 tr.highlight-recommended{background:var(--row-highlight);}
-td.num{font-family:var(--mono); text-align:right;}
+td.num{font-family:var(--mono); text-align:right; font-variant-numeric:tabular-nums;}
 .table-wrap{overflow-x:auto;}
 
 /* Charts */
 .chart-svg{width:100%; height:auto; display:block;}
 .chart-grid{stroke:var(--chart-grid); stroke-width:1;}
 .chart-axis{stroke:var(--chart-axis); stroke-width:1;}
-.chart-tick{font-size:9.5px; fill:var(--text-faint); font-family:var(--mono);}
+.chart-tick{font-size:9.5px; fill:var(--text-faint); font-family:var(--mono); font-variant-numeric:tabular-nums;}
 .chart-axis-label{font-size:10px; fill:var(--text-muted);}
 .chart-line{fill:none; stroke-width:2;}
 .chart-comfort-band{fill:var(--comfort-band); opacity:.6;}
@@ -276,12 +292,12 @@ td.num{font-family:var(--mono); text-align:right;}
 
 .gauge-svg{width:140px; height:140px;}
 .gauge-track{stroke:var(--chart-grid);}
-.gauge-score{font-size:30px; font-weight:800; font-family:var(--mono); fill:var(--text);}
+.gauge-score{font-size:30px; font-weight:800; font-family:var(--mono); fill:var(--text); font-variant-numeric:tabular-nums;}
 .gauge-max{font-size:11px; fill:var(--text-faint);}
 .gauge-sublabel{text-align:center; font-size:11px; color:var(--text-muted); margin-top:4px;}
 
 /* Score badges / checklist */
-.score-pill{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-weight:700;}
+.score-pill{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-weight:700; font-variant-numeric:tabular-nums;}
 .checklist{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px;}
 .checklist li{font-size:13px;}
 .checklist li::before{content:"✓ "; color:var(--good); font-weight:700;}
@@ -289,8 +305,8 @@ td.num{font-family:var(--mono); text-align:right;}
 /* Recommended design panel */
 .recommend-panel{border:1.5px solid var(--good); background:var(--recommend-bg); border-radius:var(--radius-card); padding:18px 20px;}
 .recommend-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:10px;}
-.recommend-item .k{font-size:10.5px; text-transform:uppercase; color:var(--text-muted); letter-spacing:.03em;}
-.recommend-item .v{font-weight:700; font-size:14px;}
+.recommend-item .k{font-size:10.5px; text-transform:uppercase; color:var(--text-muted); letter-spacing:var(--tracking-wide);}
+.recommend-item .v{font-weight:700; font-size:14px; font-variant-numeric:tabular-nums;}
 
 /* Explain link */
 .explain-link{font-size:11px; color:var(--accent); font-weight:600; border:1px dashed var(--accent); border-radius:5px; padding:2px 8px; display:inline-block; margin-top:6px;}
@@ -307,7 +323,7 @@ td.num{font-family:var(--mono); text-align:right;}
 
 /* Landing hero */
 .hero{background:linear-gradient(135deg,var(--navy-900),var(--navy-700)); color:#fff; border-radius:14px; padding:36px 40px; margin-bottom:22px;}
-.hero h1{font-size:28px; color:#fff; margin-bottom:8px;}
+.hero h1{font-size:28px; color:#fff; margin-bottom:8px; letter-spacing:var(--tracking-tight);}
 .hero p{color:#c3d6e2; max-width:640px; font-size:14px; line-height:1.6;}
 .hero .flow{display:flex; align-items:center; gap:8px; margin-top:20px; flex-wrap:wrap; font-family:var(--mono); font-size:12px;}
 .hero .flow span.step{background:rgba(255,255,255,.1); padding:6px 12px; border-radius:6px; color:#e7f1f7;}
@@ -325,7 +341,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .assumption-list li{padding:8px 0; border-bottom:1px dashed var(--border); font-size:13px;}
 .assumption-list li:last-child{border-bottom:none;}
 
-.badge-source{font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:700; text-transform:uppercase;}
+.badge-source{font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:700; text-transform:uppercase; letter-spacing:var(--tracking-wide);}
 
 /* Validation errors */
 .validation-errors{ background:var(--error-bg); border:1px solid var(--error-border); border-radius:var(--radius-card); padding:10px 14px; margin:10px 0; font-size:12.5px; color:var(--bad); }
@@ -368,7 +384,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .preset-btn .t{display:block; font-weight:700; color:var(--text);}
 .preset-btn .s{display:block; font-size:11px; color:var(--text-faint); font-weight:400; margin-top:2px;}
 .preset-btn.selected{border-color:var(--accent); background:var(--active-tint);}
-.loc-option-region{font-size:10.5px; color:var(--text-faint); text-transform:uppercase;}
+.loc-option-region{font-size:10.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:var(--tracking-wide);}
 
 /* Mobile: sidebar becomes an off-canvas drawer opened via the hamburger
    button in the topbar, closed by tapping the backdrop, a nav link, or

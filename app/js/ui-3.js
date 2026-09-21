@@ -224,15 +224,9 @@ window.UI = window.UI || {};
     const simId = "SIM-" + now.getTime();
     const geom = ENGINE.computeGeometry(s.design);
     // design.length/width only hold real dimensions for a rectangular
-    // footprint — for a round shape they're stale leftovers from whatever
-    // was last typed into that (now-hidden) field, and an L-shape's actual
-    // footprint isn't length x width at all. Report per the fields the
-    // shape actually uses, the same way the Designer's own preview does.
-    const shapeDimensions = s.design.shape === "L_SHAPE"
-      ? `Wing A ${s.design.lengthA || 4}m × ${s.design.widthA || 4}m + Wing B ${s.design.lengthB || 3}m × ${s.design.widthB || 3}m, ${s.design.height}m height`
-      : ["CIRCULAR", "DOME", "SEMI_CIRCULAR"].includes(s.design.shape)
-      ? `⌀ ${s.design.diameter || 5}m, ${s.design.height}m height`
-      : `${s.design.length}m × ${s.design.width}m × ${s.design.height}m`;
+    // footprint — see U.shapeDimensionsText for why every shape needs its
+    // own case, shared across every screen that displays this.
+    const shapeDimensions = U.shapeDimensionsText(s.design);
 
     root.innerHTML = `
       <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">

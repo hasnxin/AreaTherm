@@ -794,9 +794,10 @@ window.UI = window.UI || {};
             </div>
             <div class="form-inline" id="rectFields" style="${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape)?"display:none;":""}">
               <div class="form-row"><label>Length (m)</label><input id="dLength" type="number" step="0.1" value="${d.length}"></div>
-              <div class="form-row"><label>Width (m)</label><input id="dWidth" type="number" step="0.1" value="${d.width}"></div>
+              <div class="form-row" id="dWidthRow" style="${d.shape==="SQUARE"?"display:none;":""}"><label>Width (m)</label><input id="dWidth" type="number" step="0.1" value="${d.width}"></div>
               <div class="form-row"><label>Height (m)</label><input id="dHeight" type="number" step="0.1" value="${d.height}"></div>
             </div>
+            ${d.shape === "SQUARE" ? `<p class="hint">Square uses Length for both sides — there's no separate Width input.</p>` : d.shape === "CUSTOM" ? `<p class="hint">"Custom" has no distinct shape geometry yet — it's computed as a rectangular box from Length × Width × Height, the same as Rectangular.</p>` : ""}
             <div class="form-inline" id="roundFields" style="${["CIRCULAR","DOME","SEMI_CIRCULAR"].includes(d.shape)?"":"display:none;"}">
               <div class="form-row"><label>Diameter (m)</label><input id="dDiameter" type="number" step="0.1" value="${d.diameter || 5}"></div>
               <div class="form-row"><label>Height (m)</label><input id="dHeight2" type="number" step="0.1" value="${d.height}"></div>
@@ -977,6 +978,11 @@ window.UI = window.UI || {};
       U.qs("#rectFields", root).style.display = (isRoundV || isLShapeV) ? "none" : "";
       U.qs("#roundFields", root).style.display = isRoundV ? "" : "none";
       U.qs("#lshapeFields", root).style.display = isLShapeV ? "" : "none";
+      // Width has no effect for SQUARE (see readDesignFromForm/computeGeometry,
+      // which always overrides W=L for it) — hide it live too, not just at
+      // next render, so the dead field never has a moment of looking live.
+      const widthRow = U.qs("#dWidthRow", root);
+      if (widthRow) widthRow.style.display = v === "SQUARE" ? "none" : "";
     }, root);
     U.on("#dOrientation", "change", () => {
       U.qs("#azimuthRow", root).style.display = U.qs("#dOrientation", root).value === "CUSTOM" ? "" : "none";
@@ -1291,9 +1297,10 @@ window.UI = window.UI || {};
           </div>
           <div class="form-inline" id="gRectFields" style="${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape)?"display:none;":""}">
             <div class="form-row"><label>Length (m)</label><input id="gLength" type="number" step="0.1" value="${d.length}"></div>
-            <div class="form-row"><label>Width (m)</label><input id="gWidth" type="number" step="0.1" value="${d.width}"></div>
+            <div class="form-row" id="gWidthRow" style="${d.shape==="SQUARE"?"display:none;":""}"><label>Width (m)</label><input id="gWidth" type="number" step="0.1" value="${d.width}"></div>
             <div class="form-row"><label>Height (m)</label><input id="gHeight" type="number" step="0.1" value="${d.height}"></div>
           </div>
+          ${d.shape === "SQUARE" ? `<p class="hint">Square uses Length for both sides — there's no separate Width input.</p>` : ""}
           <div class="form-inline" id="gRoundFields" style="${["CIRCULAR","DOME","SEMI_CIRCULAR"].includes(d.shape)?"":"display:none;"}">
             <div class="form-row"><label>Diameter (m)</label><input id="gDiameter" type="number" step="0.1" value="${d.diameter || 5}"></div>
             <div class="form-row"><label>Height (m)</label><input id="gHeight2" type="number" step="0.1" value="${d.height}"></div>
@@ -1369,6 +1376,8 @@ window.UI = window.UI || {};
       U.qs("#gRectFields", root).style.display = (isRoundV || isLShapeV) ? "none" : "";
       U.qs("#gRoundFields", root).style.display = isRoundV ? "" : "none";
       U.qs("#gLshapeFields", root).style.display = isLShapeV ? "" : "none";
+      const widthRow = U.qs("#gWidthRow", root);
+      if (widthRow) widthRow.style.display = v === "SQUARE" ? "none" : "";
     }, root);
     U.on("#gOrientation", "change", () => {
       U.qs("#gAzimuthRow", root).style.display = U.qs("#gOrientation", root).value === "CUSTOM" ? "" : "none";
@@ -1520,7 +1529,7 @@ window.UI = window.UI || {};
         <h3>Step 5 — Review &amp; Run</h3>
         <div class="grid grid-3">
           <div class="metric-card"><div class="metric-label">Location</div><div class="metric-value" style="font-size:15px;">${s.location ? U.esc(s.location.label) : "—"}</div></div>
-          <div class="metric-card"><div class="metric-label">Shelter</div><div class="metric-value" style="font-size:15px;">${d.length}×${d.width}×${d.height}m, ${d.orientation}</div></div>
+          <div class="metric-card"><div class="metric-label">Shelter</div><div class="metric-value" style="font-size:15px;">${U.shapeDimensionsText(d)}, ${d.orientation}</div></div>
           <div class="metric-card"><div class="metric-label">Comfort Range</div><div class="metric-value" style="font-size:15px;">${d.comfort.min}–${d.comfort.max}°C</div></div>
         </div>
         <div style="margin-top:8px;">${U.badge(s.climateSource)}</div>

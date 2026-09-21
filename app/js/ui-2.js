@@ -449,7 +449,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         <h2 style="margin-bottom:0;">✅ Recommended Shelter Design — Design ${opt.recommended.label} <span class="tag tag-model">Model Prediction</span></h2>
         <div class="recommend-grid">
           <div class="recommend-item"><div class="k">Orientation</div><div class="v">${opt.recommended.params.orient}-facing</div></div>
-          <div class="recommend-item"><div class="k">Dimensions</div><div class="v">${opt.recommended.design.length}m × ${opt.recommended.design.width}m × ${opt.recommended.design.height}m</div></div>
+          <div class="recommend-item"><div class="k">Dimensions</div><div class="v">${U.shapeDimensionsText(opt.recommended.design)}</div></div>
           <div class="recommend-item"><div class="k">Wall</div><div class="v">${matName(opt.recommended.design.wall.materialId)}</div></div>
           <div class="recommend-item"><div class="k">Insulation</div><div class="v">${opt.recommended.params.insul} mm</div></div>
           <div class="recommend-item"><div class="k">Roof</div><div class="v">${matName(opt.recommended.design.roof.materialId)}</div></div>
