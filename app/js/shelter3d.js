@@ -9,8 +9,9 @@
    Usage from any classic (non-module) script, once this module has loaded:
      const view = new window.AreaTherm3D.Shelter3D(canvasEl);
      view.update({ shape, width, length, height, diameter, lengthA, widthA,
-                    lengthB, widthB, doorCount, doorFace, windowCount,
-                    windowFace, wallColor, sunAngle });
+                    lengthB, widthB, doorCount, doorFace,
+                    windowGroups: [{count, orientation}, ...],
+                    wallColor, sunAngle });
      // ...later, e.g. on navigating away from the page:
      view.dispose();
 
@@ -35,7 +36,7 @@ export class Shelter3D {
     this.params = {
       shape: "RECTANGULAR", width: 6, length: 4, height: 3, diameter: 5,
       lengthA: 4, widthA: 4, lengthB: 3, widthB: 3,
-      doorCount: 1, doorFace: "FRONT", windowCount: 2, windowFace: "FRONT",
+      doorCount: 1, doorFace: "FRONT", windowGroups: [{ count: 2, orientation: "FRONT" }],
       wallColor: "#dfeef2", sunAngle: 135
     };
 
@@ -155,7 +156,7 @@ export class Shelter3D {
    *          width:number, length:number, height:number, diameter:number,
    *          lengthA:number, widthA:number, lengthB:number, widthB:number,
    *          doorCount:number, doorFace:('FRONT'|'BACK'|'LEFT'|'RIGHT'),
-   *          windowCount:number, windowFace:('FRONT'|'BACK'|'LEFT'|'RIGHT'),
+   *          windowGroups:Array<{count:number, orientation:('FRONT'|'BACK'|'LEFT'|'RIGHT')}>,
    *          wallColor:string, sunAngle:number}} params
    */
   update(params) {
@@ -168,7 +169,7 @@ export class Shelter3D {
     this._rebuildGeometry(shape, p.width, p.length, p.height, p.diameter, p.lengthA, p.widthA, p.lengthB, p.widthB);
     this.wallMaterial.color.set(p.wallColor);
     this._rebuildOpenings(shape, p.width, p.length, p.height, p.diameter, p.lengthA, p.widthA, p.lengthB, p.widthB,
-      p.doorCount, p.windowCount, p.doorFace || "FRONT", p.windowFace || "FRONT");
+      p.doorCount, p.doorFace || "FRONT", p.windowGroups || []);
     this._positionSun(p.sunAngle, p.width, p.length, p.height);
 
     // Camera framing needs the shelter's actual footprint extent, which
@@ -334,15 +335,18 @@ export class Shelter3D {
     this.openingsGroup.add(mesh);
   }
 
-  // Doors and windows each use the same FRONT/BACK/LEFT/RIGHT face as the
-  // rest of the app (the Shelter Designer's "Door face"/"Window face"
-  // controls and the 2D preview). When they land on the same wall, they
-  // share one evenly-spaced slot layout (doors first, then windows) so they
-  // can't overlap; otherwise each is spaced independently along its own
-  // wall. The span/placement functions swap per shape so the same slot
-  // math works whether "along" a wall means a straight line, an arc, or an
-  // L-tromino edge.
-  _rebuildOpenings(shape, width, length, height, diameter, lengthA, widthA, lengthB, widthB, doorCount, windowCount, doorFace, windowFace) {
+  // Doors and each window group use the same FRONT/BACK/LEFT/RIGHT face as
+  // the rest of the app (the Shelter Designer's per-window-group face
+  // controls and the 2D preview) — a shelter can have several window
+  // groups on different faces at once, e.g. windows on both FRONT and
+  // LEFT. Whichever items (the door, and/or one or more window groups)
+  // land on the same wall share one evenly-spaced slot layout (doors
+  // first, then windows in whatever order their groups were given) so
+  // they can't overlap; a wall with nothing on it is untouched. The span/
+  // placement functions swap per shape so the same slot math works
+  // whether "along" a wall means a straight line, an arc, or an L-tromino
+  // edge.
+  _rebuildOpenings(shape, width, length, height, diameter, lengthA, widthA, lengthB, widthB, doorCount, doorFace, windowGroups) {
     while (this.openingsGroup.children.length) {
       const child = this.openingsGroup.children.pop();
       child.geometry.dispose();
@@ -367,39 +371,31 @@ export class Shelter3D {
     const doorH = Math.min(DOOR_SIZE.h, height * 0.85), doorY = doorH / 2;
     const winH = Math.min(WINDOW_SIZE.h, height * 0.35), winY = height * 0.55;
 
-    if (doorCount > 0 && windowCount > 0 && doorFace === windowFace) {
-      const span = spanOf(doorFace);
-      const total = doorCount + windowCount;
-      const slotW = span / (total + 1);
-      const doorW = Math.min(DOOR_SIZE.w, slotW * 0.7);
-      const winW = Math.min(WINDOW_SIZE.w, slotW * 0.7);
+    // One list of "items to place" (the door group, plus each window
+    // group), tagged with the face they belong to — then grouped by face
+    // so everything sharing a wall lays out in one slot sequence.
+    const items = [];
+    if (doorCount > 0) items.push({ kind: "door", count: doorCount, face: doorFace });
+    (windowGroups || []).forEach(w => { if (w.count > 0) items.push({ kind: "window", count: w.count, face: w.orientation || "FRONT" }); });
+
+    const byFace = {};
+    items.forEach(it => { (byFace[it.face] = byFace[it.face] || []).push(it); });
+
+    Object.entries(byFace).forEach(([face, faceItems]) => {
+      const span = spanOf(face);
+      const totalSlots = faceItems.reduce((s, it) => s + it.count, 0);
+      const slotW = span / (totalSlots + 1);
       let slot = 1;
-      for (let i = 0; i < doorCount; i++, slot++) {
-        place(this.doorMaterial, doorW, doorH, doorY, doorFace, -span / 2 + slotW * slot);
-      }
-      for (let i = 0; i < windowCount; i++, slot++) {
-        place(this.windowMaterial, winW, winH, winY, windowFace, -span / 2 + slotW * slot);
-      }
-      return;
-    }
-
-    if (doorCount > 0) {
-      const span = spanOf(doorFace);
-      const slotW = span / (doorCount + 1);
-      const doorW = Math.min(DOOR_SIZE.w, slotW * 0.7);
-      for (let i = 1; i <= doorCount; i++) {
-        place(this.doorMaterial, doorW, doorH, doorY, doorFace, -span / 2 + slotW * i);
-      }
-    }
-
-    if (windowCount > 0) {
-      const span = spanOf(windowFace);
-      const slotW = span / (windowCount + 1);
-      const winW = Math.min(WINDOW_SIZE.w, slotW * 0.7);
-      for (let i = 1; i <= windowCount; i++) {
-        place(this.windowMaterial, winW, winH, winY, windowFace, -span / 2 + slotW * i);
-      }
-    }
+      faceItems.forEach(it => {
+        const isDoor = it.kind === "door";
+        const w = Math.min(isDoor ? DOOR_SIZE.w : WINDOW_SIZE.w, slotW * 0.7);
+        const h = isDoor ? doorH : winH, y = isDoor ? doorY : winY;
+        const material = isDoor ? this.doorMaterial : this.windowMaterial;
+        for (let i = 0; i < it.count; i++, slot++) {
+          place(material, w, h, y, face, -span / 2 + slotW * slot);
+        }
+      });
+    });
   }
 
   _positionSun(sunAngleDeg, width, length, height) {

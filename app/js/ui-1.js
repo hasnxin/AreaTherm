@@ -538,8 +538,15 @@ window.UI = window.UI || {};
       }
       return marks;
     }
-    const win = design.windows && design.windows[0];
-    const winMarks = win ? edgeMarks(win.orientation || "FRONT", win.count, "#2fb8cf") : "";
+    // Multiple window groups can share a face — aggregate counts per face
+    // first so that face gets one set of evenly-spaced marks (its true
+    // total), rather than two overlapping sets drawn independently.
+    const winCountByFace = {};
+    (design.windows || []).forEach(win => {
+      const face = win.orientation || "FRONT";
+      winCountByFace[face] = (winCountByFace[face] || 0) + (win.count || 0);
+    });
+    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#2fb8cf")).join("");
     const door = design.doors && design.doors[0];
     const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#8a5a10") : "";
 
@@ -594,10 +601,109 @@ window.UI = window.UI || {};
         <text x="${cx}" y="14" text-anchor="middle" class="chart-tick" font-size="11">N ↑</text>
         <text x="${cx}" y="${size - 6}" text-anchor="middle" class="chart-tick" font-size="10">Top-down schematic — illustrative</text>
         ${isLShape ? `<text x="${cx}" y="${size + 12}" text-anchor="middle" class="chart-tick" font-size="9.5">Wing B: ${(design.lengthB || 3).toFixed(1)}×${(design.widthB || 3).toFixed(1)} m</text>` : ""}
-        <text x="${cx}" y="${winLineY}" text-anchor="middle" class="chart-tick" font-size="9.5">${win && win.count ? win.count + " window" + (win.count > 1 ? "s" : "") + " on " + compassLabel(bearing + (edgeOf[win.orientation || "FRONT"] ?? 0)) + " face" : "No windows configured"}${doorArea ? " · Door " + doorArea.toFixed(1) + " m² on " + compassLabel(bearing + (edgeOf[door.orientation || "FRONT"] ?? 0)) + " face" : ""}</text>
+        <text x="${cx}" y="${winLineY}" text-anchor="middle" class="chart-tick" font-size="9.5">${
+          Object.keys(winCountByFace).length
+            ? Object.entries(winCountByFace).map(([face, count]) => `${count} on ${compassLabel(bearing + (edgeOf[face] ?? 0))}`).join(", ") + (Object.values(winCountByFace).reduce((a,b)=>a+b,0) > 1 ? " windows" : " window")
+            : "No windows configured"
+        }${doorArea ? " · Door " + doorArea.toFixed(1) + " m² on " + compassLabel(bearing + (edgeOf[door.orientation || "FRONT"] ?? 0)) + " face" : ""}</text>
         <line x1="${size - 10 - scaleBarPx}" y1="${scaleLineY}" x2="${size - 10}" y2="${scaleLineY}" class="chart-axis"/>
         <text x="${size - 10 - scaleBarPx / 2}" y="${scaleLineY - 1}" text-anchor="middle" class="chart-tick" font-size="8.5">1 m</text>
       </svg>`;
+  }
+
+  // ---- Window groups editor (shared by the Advanced Designer's `d`
+  // prefix and Guided Setup's `g` prefix) ----------------------------------
+  // A shelter can have windows on more than one face at once, each face
+  // wanting its own area/glazing — so this renders and reads a repeatable
+  // list of {areaEach, count, orientation, glazingMaterialId} groups (one
+  // row per face, or per group of identical windows on that face), instead
+  // of the single fixed row the rest of the form's fields use.
+  function glazeOptionsHtml(selectedId) {
+    return DATA.materialsByCategory("WINDOW").map(m => `<option value="${m.id}" ${selectedId === m.id ? "selected" : ""}>${m.name} (U=${m.uValue}, SHGC=${m.shgc})</option>`).join("");
+  }
+  function windowRowHtml(w) {
+    return `
+      <div class="form-inline win-row" style="align-items:flex-end; border-top:1px solid var(--border); padding-top:8px; margin-top:8px;">
+        <div class="form-row"><label>Area each (m²)</label><input type="number" step="0.1" min="0.1" class="win-area" value="${w.areaEach}"></div>
+        <div class="form-row"><label>Count</label><input type="number" min="1" class="win-count" value="${w.count}"></div>
+        <div class="form-row"><label>Face</label><select class="win-face">${["FRONT","BACK","LEFT","RIGHT"].map(v => `<option value="${v}" ${w.orientation === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+        <div class="form-row"><label>Glazing</label><select class="win-glaze">${glazeOptionsHtml(w.glazingMaterialId)}</select></div>
+        <div class="form-row" style="flex:0 0 auto;"><button type="button" class="btn btn-sm win-remove-btn" title="Remove this window group">✕</button></div>
+      </div>`;
+  }
+  function windowGroupsFieldHtml(prefix, windows) {
+    return `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; flex-wrap:wrap; gap:6px;">
+        <label style="font-weight:600;">Windows <span class="hint" style="font-weight:400;">— one row per face (or group of identical windows on that face)</span></label>
+        <button type="button" class="btn btn-sm" id="${prefix}AddWindowBtn">+ Add window group</button>
+      </div>
+      <div id="${prefix}WindowRows">${windows.map(windowRowHtml).join("")}</div>
+      <button type="button" class="btn btn-sm" id="${prefix}SuggestWinBtn" style="margin-top:8px;">💡 Suggest optimal placement</button>
+      <div id="${prefix}WinSuggestion"></div>`;
+  }
+  function readWindowGroupsFromForm(root, prefix) {
+    return U.qsa(`#${prefix}WindowRows .win-row`, root).map(row => ({
+      areaEach: parseFloat(row.querySelector(".win-area").value) || 0.1,
+      count: parseInt(row.querySelector(".win-count").value) || 1,
+      orientation: row.querySelector(".win-face").value,
+      glazingMaterialId: row.querySelector(".win-glaze").value
+    }));
+  }
+  // getDraft(): () => the full current design draft (every other field,
+  // not just windows) — used as the baseline the placement suggestion
+  // scores candidates against. onChange(): called after a row is added,
+  // removed, or a suggestion applied, so the caller's own live-preview
+  // recompute runs (plain input/change edits within a row already bubble
+  // up to the page's own root-level listener and don't need this).
+  function wireWindowGroupsEvents(root, prefix, getDraft, onChange) {
+    function bindRowRemove() {
+      U.qsa(`#${prefix}WindowRows .win-remove-btn`, root).forEach(btn => {
+        btn.addEventListener("click", () => {
+          const rows = U.qsa(`#${prefix}WindowRows .win-row`, root);
+          if (rows.length <= 1) return; // always keep at least one window group
+          const windows = readWindowGroupsFromForm(root, prefix);
+          windows.splice(rows.indexOf(btn.closest(".win-row")), 1);
+          rerenderRows(windows);
+          onChange();
+        });
+      });
+    }
+    function rerenderRows(windows) {
+      U.qs(`#${prefix}WindowRows`, root).innerHTML = windows.map(windowRowHtml).join("");
+      bindRowRemove();
+    }
+    bindRowRemove();
+    U.on(`#${prefix}AddWindowBtn`, "click", () => {
+      const windows = readWindowGroupsFromForm(root, prefix);
+      const last = windows[windows.length - 1] || { areaEach: 1.2, glazingMaterialId: "glaze_double" };
+      windows.push({ areaEach: last.areaEach, count: 1, orientation: "FRONT", glazingMaterialId: last.glazingMaterialId });
+      rerenderRows(windows);
+      onChange();
+    }, root);
+    U.on(`#${prefix}SuggestWinBtn`, "click", () => {
+      const season = STORE.currentSeason();
+      const box = U.qs(`#${prefix}WinSuggestion`, root);
+      if (!season) { box.innerHTML = `<p class="hint" style="color:var(--bad);">Load a location &amp; climate first — the suggestion needs live weather to score candidates.</p>`; return; }
+      const draft = getDraft();
+      draft.windows = readWindowGroupsFromForm(root, prefix);
+      let rec;
+      try { rec = ENGINE.recommendWindowLayout(draft, season, STORE.get().simConfig); } catch (e) { rec = null; }
+      if (!rec) { box.innerHTML = `<p class="hint">Add at least one window with a positive area first.</p>`; return; }
+      if (rec.best.label === "Current layout") {
+        box.innerHTML = `<p class="hint">Current placement already scores best among the layouts tried (${rec.current.score}/100 predicted comfort score) — no change suggested.</p>`;
+        return;
+      }
+      box.innerHTML = `
+        <div class="card" style="margin-top:8px; background:var(--bg);">
+          <p class="hint" style="margin:0 0 6px;"><b>${U.esc(rec.best.label)}</b> — predicted comfort score <b>${rec.best.score}/100</b> vs current <b>${rec.current.score}/100</b> (${rec.best.groups.map(g => `${g.count}×${g.areaEach}m² on ${g.orientation}`).join(", ")}).</p>
+          <button type="button" class="btn btn-sm btn-accent" id="${prefix}ApplyWinSuggestionBtn">Apply this layout</button>
+        </div>`;
+      U.on(`#${prefix}ApplyWinSuggestionBtn`, "click", () => {
+        rerenderRows(rec.best.groups);
+        box.innerHTML = "";
+        onChange();
+      }, root);
+    }, root);
   }
 
   UI.renderDesigner = function (root) {
@@ -606,8 +712,6 @@ window.UI = window.UI || {};
     const geom = ENGINE.computeGeometry(d);
     const wallOpts = DATA.materialsByCategory("WALL").map(m => `<option value="${m.id}" ${d.wall.materialId === m.id ? "selected" : ""}>${m.name}</option>`).join("");
     const roofOpts = DATA.materialsByCategory("ROOF").map(m => `<option value="${m.id}" ${d.roof.materialId === m.id ? "selected" : ""}>${m.name}</option>`).join("");
-    const glazeOpts = DATA.materialsByCategory("WINDOW").map(m => `<option value="${m.id}" ${d.windows[0].glazingMaterialId === m.id ? "selected" : ""}>${m.name} (U=${m.uValue}, SHGC=${m.shgc})</option>`).join("");
-
     root.innerHTML = `
       <h1>Shelter Designer</h1>
       <p class="subtitle">Define geometry, orientation, and openings. Preview updates live.</p>
@@ -653,15 +757,8 @@ window.UI = window.UI || {};
           </fieldset>
           <fieldset>
             <legend>Openings</legend>
-            <div class="form-inline">
-              <div class="form-row"><label>Window area each (m²)</label><input id="dWinArea" type="number" step="0.1" value="${d.windows[0].areaEach}"></div>
-              <div class="form-row"><label>Window count</label><input id="dWinCount" type="number" value="${d.windows[0].count}"></div>
-              <div class="form-row"><label>Window face</label>
-                <select id="dWinOrient">${["FRONT","BACK","LEFT","RIGHT"].map(v=>`<option ${d.windows[0].orientation===v?"selected":""}>${v}</option>`).join("")}</select>
-              </div>
-            </div>
-            <div class="form-inline">
-              <div class="form-row"><label>Glazing type</label><select id="dGlazing">${glazeOpts}</select></div>
+            ${windowGroupsFieldHtml("d", d.windows)}
+            <div class="form-inline" style="margin-top:12px;">
               <div class="form-row"><label>Door area (m²)</label><input id="dDoorArea" type="number" step="0.1" value="${d.doors[0].areaEach}"></div>
               <div class="form-row"><label>Door face</label>
                 <select id="dDoorOrient">${["FRONT","BACK","LEFT","RIGHT"].map(v=>`<option ${(d.doors[0].orientation||"FRONT")===v?"selected":""}>${v}</option>`).join("")}</select>
@@ -692,7 +789,7 @@ window.UI = window.UI || {};
             <h3>3D Preview <span class="tag tag-demo">illustrative</span></h3>
             <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:8px; cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
-            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and windows are shown on the "Door face"/"Window face" walls set below — window orientation also drives the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
+            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and each window group below are shown on their own configured face — each window group's face also drives its own share of the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>Derived Geometry <span class="tag tag-model">calculated</span></h3>
@@ -759,8 +856,7 @@ window.UI = window.UI || {};
         lengthB: design.lengthB || 3, widthB: design.widthB || 3,
         doorCount: (design.doors || []).reduce((s, dr) => s + (dr.count || 0), 0),
         doorFace: (design.doors && design.doors[0] && design.doors[0].orientation) || "FRONT",
-        windowCount: (design.windows || []).reduce((s, w) => s + (w.count || 0), 0),
-        windowFace: (design.windows && design.windows[0] && design.windows[0].orientation) || "FRONT",
+        windowGroups: (design.windows || []).map(w => ({ count: w.count || 0, orientation: w.orientation || "FRONT" })),
         wallColor: WALL_COLOR_BY_MATERIAL[wallMatId] || "#dfeef2",
         sunAngle: ENGINE.frontAzimuthOf(design)
       });
@@ -844,11 +940,7 @@ window.UI = window.UI || {};
         airLeakageAch: U.numOr(U.qs("#dAch", root).value, d.airLeakageAch),
         occupancy, occupancyActivity,
         internalHeatGainW: parseFloat(U.qs("#dInternal", root).value) || 0,
-        windows: [{
-          areaEach: parseFloat(U.qs("#dWinArea", root).value) || d.windows[0].areaEach,
-          count: parseInt(U.qs("#dWinCount", root).value) || d.windows[0].count,
-          orientation: U.qs("#dWinOrient", root).value, glazingMaterialId: U.qs("#dGlazing", root).value
-        }],
+        windows: readWindowGroupsFromForm(root, "d"),
         doors: [{ areaEach: parseFloat(U.qs("#dDoorArea", root).value) || d.doors[0].areaEach, count: 1, orientation: U.qs("#dDoorOrient", root).value }],
         wall: {
           materialId: U.qs("#dWallMat", root).value,
@@ -943,6 +1035,7 @@ window.UI = window.UI || {};
       if (/^(INPUT|SELECT)$/.test(e.target.tagName)) debouncedRecompute.flush();
     }, true);
     liveRecompute();
+    wireWindowGroupsEvents(root, "d", readDesignFromForm, liveRecompute);
 
     U.on("#saveDesignBtn", "click", () => {
       const draft = readDesignFromForm();
@@ -1102,7 +1195,6 @@ window.UI = window.UI || {};
   // sensible default, fine-tunable in the Advanced Designer.
   function renderGuidedShelter(root, s) {
     const d = s.design;
-    const glazeOpts = DATA.materialsByCategory("WINDOW").map(m => `<option value="${m.id}" ${d.windows[0].glazingMaterialId === m.id ? "selected" : ""}>${m.name} (U=${m.uValue}, SHGC=${m.shgc})</option>`).join("");
     root.innerHTML = `
       <h1>Guided Setup</h1>
       ${guidedStepBar(2)}
@@ -1142,15 +1234,8 @@ window.UI = window.UI || {};
           <p class="hint">South-facing generally captures the most winter sun in the Northern Hemisphere.</p>
 
           <h3 style="margin-top:16px;">Openings</h3>
-          <div class="form-inline">
-            <div class="form-row"><label>Window area each (m²)</label><input id="gWinArea" type="number" step="0.1" value="${d.windows[0].areaEach}"></div>
-            <div class="form-row"><label>Window count</label><input id="gWinCount" type="number" value="${d.windows[0].count}"></div>
-            <div class="form-row"><label>Window face</label>
-              <select id="gWinOrient">${["FRONT","BACK","LEFT","RIGHT"].map(v=>`<option ${d.windows[0].orientation===v?"selected":""}>${v}</option>`).join("")}</select>
-            </div>
-          </div>
-          <div class="form-inline">
-            <div class="form-row"><label>Glazing type</label><select id="gGlazing">${glazeOpts}</select></div>
+          ${windowGroupsFieldHtml("g", d.windows)}
+          <div class="form-inline" style="margin-top:12px;">
             <div class="form-row"><label>Door area (m²)</label><input id="gDoorArea" type="number" step="0.1" value="${d.doors[0].areaEach}"></div>
             <div class="form-row"><label>Door face</label>
               <select id="gDoorOrient">${["FRONT","BACK","LEFT","RIGHT"].map(v=>`<option ${(d.doors[0].orientation||"FRONT")===v?"selected":""}>${v}</option>`).join("")}</select>
@@ -1181,11 +1266,7 @@ window.UI = window.UI || {};
         widthB: parseFloat(U.qs("#gWidthB", root).value) || d.widthB || 3,
         orientation: U.qs("#gOrientation", root).value,
         azimuthDeg: parseFloat(U.qs("#gAzimuth", root).value) || 0,
-        windows: [{
-          areaEach: parseFloat(U.qs("#gWinArea", root).value) || d.windows[0].areaEach,
-          count: parseInt(U.qs("#gWinCount", root).value) || d.windows[0].count,
-          orientation: U.qs("#gWinOrient", root).value, glazingMaterialId: U.qs("#gGlazing", root).value
-        }],
+        windows: readWindowGroupsFromForm(root, "g"),
         doors: [{ areaEach: parseFloat(U.qs("#gDoorArea", root).value) || d.doors[0].areaEach, count: 1, orientation: U.qs("#gDoorOrient", root).value }]
       };
     }
@@ -1211,6 +1292,7 @@ window.UI = window.UI || {};
     }, root);
     root.addEventListener("input", refreshPreview);
     root.addEventListener("change", refreshPreview);
+    wireWindowGroupsEvents(root, "g", () => ({ ...d, ...readPatch() }), refreshPreview);
 
     wireGuidedNav(root, () => {
       const patch = readPatch();

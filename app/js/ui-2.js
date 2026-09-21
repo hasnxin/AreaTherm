@@ -95,7 +95,7 @@ Q_solar,window ≈ ${result.windowArea.toFixed(2)} × ${peakSun.gHoriz} × ${res
             = ${peakSun.qSolarWindow} W  (at this hour)
 
 Daily total (integrated over all daylight hours) = ${result.daily.solarKwh} kWh/day</pre>
-      <p class="hint">Opaque-surface solar gain (through walls/roof) is folded into the sol-air conduction terms — see Explain Calculation on Wall/Roof Loss.</p>`;
+      <p class="hint">Opaque-surface solar gain (through walls/roof) is folded into the sol-air conduction terms — see Explain Calculation on Wall/Roof Loss.${design.windows.length > 1 ? ` This walkthrough uses window group 1 (${w.orientation} face, ${matNameLocal(w.glazingMaterialId)}) as a representative example — the design also has ${design.windows.length - 1} more window group(s) on other faces, each computed the same way and already included in the daily total above.` : ""}</p>`;
   }
   function matNameLocal(id) { const m = DATA.materialById(id); return m ? m.name : id; }
 
@@ -110,7 +110,8 @@ U_window = ${ENGINE.windowUValue(w).toFixed(2)} W/m²K,  SHGC = ${(DATA.material
 A_window (total) = ${result.windowArea.toFixed(2)} m²
 
 At coldest hour: T_indoor=${coldest.tIndoor}°C, T_amb=${coldest.tAmb}°C → Q_window,cond ≈ ${coldest.qWindowCond} W
-At peak-sun hour (${peakSun.hourDecimal.toFixed(1)}h): G=${peakSun.gHoriz} W/m² → Q_solar,window ≈ ${peakSun.qSolarWindow} W</pre>`;
+At peak-sun hour (${peakSun.hourDecimal.toFixed(1)}h): G=${peakSun.gHoriz} W/m² → Q_solar,window ≈ ${peakSun.qSolarWindow} W</pre>
+      ${design.windows.length > 1 ? `<p class="hint">U-value/SHGC shown are for window group 1 (${w.orientation} face) — the design has ${design.windows.length - 1} more window group(s), each with its own face/glazing, all included in A_window (total) and the totals above.</p>` : ""}`;
   }
   function explainVent(result, design) {
     const coldest = result.series.reduce((a, b) => a.tAmb < b.tAmb ? a : b);
@@ -559,7 +560,16 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
   // ---------------------------------------------------------------------
   const WHATIF_PRESETS = {
     insulation: { label: "Increase insulation 50mm → 100mm", apply: d => { d.wall.insulationThicknessMm = 100; d.roof.insulationThicknessMm = 100; } },
-    window: { label: "Increase window area 10% → 20% of wall area", apply: d => { const geom = ENGINE.computeGeometry(d); d.windows[0].areaEach = geom.wallArea * 0.20; } },
+    window: { label: "Increase window area 10% → 20% of wall area", apply: d => {
+      const geom = ENGINE.computeGeometry(d);
+      const targetTotal = geom.wallArea * 0.20;
+      const currentTotal = d.windows.reduce((s, w) => s + (w.areaEach || 0) * (w.count || 0), 0) || 1;
+      // Scale every group's area (not just the first) so each group's face
+      // stays proportionally represented, and use the group's own count —
+      // not areaEach alone — so more than one window on a face still sums
+      // to the target total instead of overshooting it.
+      d.windows.forEach(w => { w.areaEach = Math.round(w.areaEach * (targetTotal / currentTotal) * 100) / 100; });
+    } },
     orientation: { label: "Change orientation East → South", apply: d => { d.orientation = "SOUTH"; d.azimuthDeg = 0; } },
     mass: { label: "Add thermal mass (800 kg stone)", apply: d => { d.thermalMass = { materialId: "mass_stone", massKg: 800, surfaceAreaM2: 6 }; } },
     roof: { label: "Change roof to insulated composite roof", apply: d => { d.roof.materialId = "roof_composite"; } },

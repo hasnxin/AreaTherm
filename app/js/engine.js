@@ -664,6 +664,62 @@ window.APP_ENGINE = (function () {
     return { baseScore: round2(baseScore), impacts };
   }
 
+  // ---- Window placement recommendation --------------------------------
+  // Not a fixed rule table ("south is always best") — that breaks down in
+  // a hot climate where more solar gain is the opposite of what's wanted.
+  // Instead this actually simulates a handful of candidate face
+  // distributions for the SAME total window area/glazing the design
+  // already has (so it's a placement comparison, not "add more window"),
+  // via the same runSimulation() + thermalComfortScore the rest of the
+  // app already treats as the headline number — consistent with how
+  // runOptimization() picks a winner, just scoped to one parameter.
+  function recommendWindowLayout(design, season, simConfig) {
+    if (!season) return null;
+    const geom = computeGeometry(design);
+    const groups = design.windows || [];
+    const totalArea = groups.reduce((s, w) => s + (w.areaEach || 0) * (w.count || 0), 0);
+    const totalCount = groups.reduce((s, w) => s + (w.count || 0), 0);
+    if (!(totalArea > 0)) return null;
+    const typicalSize = totalCount > 0 ? totalArea / totalCount : 1.2;
+    const glazingMaterialId = (groups[0] && groups[0].glazingMaterialId) || "glaze_double";
+
+    const OFFSETS = { FRONT: 0, BACK: 180, LEFT: -90, RIGHT: 90 };
+    const ranked = Object.keys(OFFSETS)
+      .map(face => ({ face, factor: faceFactor(geom.frontAzimuth, OFFSETS[face]) }))
+      .sort((a, b) => b.factor - a.factor);
+    const [best, second, third] = ranked;
+
+    // Splits a target total area across faces into realistically-sized
+    // window groups (rather than one giant window), using the design's
+    // own existing average window size as the yardstick.
+    function toGroups(shares) {
+      return shares.filter(s => s.area > 0.05).map(s => {
+        const count = Math.max(1, Math.round(s.area / typicalSize));
+        return { areaEach: round2(s.area / count), count, orientation: s.face, glazingMaterialId };
+      });
+    }
+
+    const candidates = [
+      { label: "Current layout", groups: groups.map(w => ({ ...w })) },
+      { label: `All on ${best.face}`, groups: toGroups([{ face: best.face, area: totalArea }]) },
+      { label: `${best.face} + ${second.face} split`, groups: toGroups([{ face: best.face, area: totalArea * 0.7 }, { face: second.face, area: totalArea * 0.3 }]) },
+      { label: `Spread across ${best.face}/${second.face}/${third.face}`, groups: toGroups([{ face: best.face, area: totalArea / 3 }, { face: second.face, area: totalArea / 3 }, { face: third.face, area: totalArea / 3 }]) }
+    ];
+
+    const evaluated = candidates.map(c => {
+      const d = cloneDesign(design);
+      d.windows = c.groups;
+      let result;
+      try { result = runSimulation(d, season, simConfig); } catch (e) { return null; }
+      return { label: c.label, groups: c.groups, score: result.scores.thermalComfortScore };
+    }).filter(Boolean);
+    if (!evaluated.length) return null;
+
+    const current = evaluated.find(e => e.label === "Current layout");
+    const ranked2 = [...evaluated].sort((a, b) => b.score - a.score);
+    return { current, best: ranked2[0], all: ranked2 };
+  }
+
   // ---- Validation stats ----------------------------------------------------
   function validationStats(points) {
     // points: [{measured, predicted}]
@@ -685,7 +741,7 @@ window.APP_ENGINE = (function () {
     ambientTempAt, solarIrradianceAt, runSimulation, estimateCost,
     computeOccupancyHeat, occupancyAchIncrement,
     windAdjustedInfiltrationAch, ventUAFromAch,
-    generateCandidates, scoreCandidate, runOptimization, sensitivityAnalysis,
+    generateCandidates, scoreCandidate, runOptimization, sensitivityAnalysis, recommendWindowLayout,
     validationStats, validateDesign, validateCoordinates,
     orientationFactorFromAngle, faceFactor, frontAzimuthOf
   };

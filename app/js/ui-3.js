@@ -15,16 +15,21 @@ window.UI = window.UI || {};
   function predictSteadyState(design, ambientC, solarWm2, season) {
     const geom = ENGINE.computeGeometry(design);
     const uWall = ENGINE.wallUValue(design), uRoof = ENGINE.roofUValue(design), uFloor = ENGINE.floorUValue(design);
-    const win = design.windows[0];
-    const uWin = ENGINE.windowUValue(win);
-    const shgc = (DATA.materialById(win.glazingMaterialId) || {}).shgc || 0.7;
-    const windowArea = (win.areaEach || 0) * (win.count || 0);
+    // Summed across every window group, not just the first — a design can
+    // have windows on more than one face, each with its own area/glazing.
+    let windowCondUA = 0, windowSolarGain = 0;
+    (design.windows || []).forEach(win => {
+      const area = (win.areaEach || 0) * (win.count || 0);
+      const shgc = (DATA.materialById(win.glazingMaterialId) || {}).shgc || 0.7;
+      windowCondUA += ENGINE.windowUValue(win) * area;
+      windowSolarGain += area * solarWm2 * 0.85 * shgc;
+    });
     const occ = ENGINE.computeOccupancyHeat(design);
     const infiltrationAch = ENGINE.windAdjustedInfiltrationAch(design, season || { windMs: 2 });
     const achTotal = infiltrationAch + ENGINE.occupancyAchIncrement(occ.persons, geom.volume);
     const ventUA = ENGINE.ventUAFromAch(achTotal, geom.volume);
-    const UA = uWall * geom.wallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + uWin * windowArea + ventUA;
-    const solarGain = windowArea * solarWm2 * 0.85 * shgc + occ.totalSensibleW;
+    const UA = uWall * geom.wallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + windowCondUA + ventUA;
+    const solarGain = windowSolarGain + occ.totalSensibleW;
     return ambientC + solarGain / UA;
   }
 
@@ -179,7 +184,7 @@ window.UI = window.UI || {};
           <tr><td>Wall</td><td>${matName(s.design.wall.materialId)} + ${matName(s.design.wall.insulationMaterialId)}</td><td>${s.design.wall.thicknessMm}mm + ${s.design.wall.insulationThicknessMm}mm</td><td>${ENGINE.wallUValue(s.design).toFixed(3)}</td></tr>
           <tr><td>Roof</td><td>${matName(s.design.roof.materialId)} + ${matName(s.design.roof.insulationMaterialId)}</td><td>${s.design.roof.thicknessMm}mm + ${s.design.roof.insulationThicknessMm}mm</td><td>${ENGINE.roofUValue(s.design).toFixed(3)}</td></tr>
           <tr><td>Floor</td><td>${matName(s.design.floor.materialId)}</td><td>${s.design.floor.thicknessMm}mm</td><td>${ENGINE.floorUValue(s.design).toFixed(3)}</td></tr>
-          <tr><td>Window</td><td>${matName(s.design.windows[0].glazingMaterialId)}</td><td>—</td><td>${ENGINE.windowUValue(s.design.windows[0]).toFixed(2)}</td></tr>
+          ${s.design.windows.map((w, i) => `<tr><td>Window${s.design.windows.length > 1 ? " " + (i + 1) + " (" + w.orientation + ")" : ""}</td><td>${matName(w.glazingMaterialId)}</td><td>${w.count}×${w.areaEach}m²</td><td>${ENGINE.windowUValue(w).toFixed(2)}</td></tr>`).join("")}
           <tr><td>Thermal mass</td><td>${s.design.thermalMass ? matName(s.design.thermalMass.materialId)+" ("+s.design.thermalMass.massKg+" kg)" : "None"}</td><td>—</td><td>—</td></tr>
         </table>
         <p class="hint">Material costs are a rough materials + installation + waste-factor planning estimate — not
@@ -259,7 +264,7 @@ window.UI = window.UI || {};
       pushMat("Roof", d.roof.materialId, d.roof.thicknessMm + "mm");
       pushMat("Roof insulation", d.roof.insulationMaterialId, d.roof.insulationThicknessMm + "mm");
       pushMat("Floor", d.floor.materialId, d.floor.thicknessMm + "mm");
-      pushMat("Window glazing", d.windows[0].glazingMaterialId, "");
+      d.windows.forEach((w, i) => pushMat(`Window glazing${d.windows.length > 1 ? " " + (i + 1) + " (" + w.orientation + ")" : ""}`, w.glazingMaterialId, `${w.count}×${w.areaEach}m²`));
       if (d.thermalMass) pushMat("Thermal mass", d.thermalMass.materialId, d.thermalMass.massKg + "kg");
       const headers = ["Element", "Material", "Thickness/Qty", "Density (kg/m3)", "k (W/mK)", "Cp (J/kgK)", "U-value (W/m2K)", "SHGC", "Cost (INR/m2 or /kg)", "Sustainability"];
       window.APP_EXPORT.downloadCsv("areatherm_material_sheet.csv", headers, rows);
@@ -347,7 +352,7 @@ window.UI = window.UI || {};
       { role: "Roof", mat: DATA.materialById(d.roof.materialId), thicknessMm: d.roof.thicknessMm },
       { role: "Roof insulation", mat: DATA.materialById(d.roof.insulationMaterialId), thicknessMm: d.roof.insulationThicknessMm },
       { role: "Floor", mat: DATA.materialById(d.floor.materialId), thicknessMm: d.floor.thicknessMm },
-      { role: "Glazing", mat: DATA.materialById(d.windows[0].glazingMaterialId), thicknessMm: null },
+      ...d.windows.map((w, i) => ({ role: `Glazing${d.windows.length > 1 ? " " + (i + 1) + " (" + w.orientation + ")" : ""}`, mat: DATA.materialById(w.glazingMaterialId), thicknessMm: null })),
       { role: "Thermal mass", mat: d.thermalMass ? DATA.materialById(d.thermalMass.materialId) : null, thicknessMm: null }
     ].filter(r => r.mat);
 
