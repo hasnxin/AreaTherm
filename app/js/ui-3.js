@@ -125,6 +125,17 @@ window.UI = window.UI || {};
     const season = STORE.currentSeason();
     const now = new Date();
     const simId = "SIM-" + now.getTime();
+    const geom = ENGINE.computeGeometry(s.design);
+    // design.length/width only hold real dimensions for a rectangular
+    // footprint — for a round shape they're stale leftovers from whatever
+    // was last typed into that (now-hidden) field, and an L-shape's actual
+    // footprint isn't length x width at all. Report per the fields the
+    // shape actually uses, the same way the Designer's own preview does.
+    const shapeDimensions = s.design.shape === "L_SHAPE"
+      ? `Wing A ${s.design.lengthA || 4}m × ${s.design.widthA || 4}m + Wing B ${s.design.lengthB || 3}m × ${s.design.widthB || 3}m, ${s.design.height}m height`
+      : ["CIRCULAR", "DOME", "SEMI_CIRCULAR"].includes(s.design.shape)
+      ? `⌀ ${s.design.diameter || 5}m, ${s.design.height}m height`
+      : `${s.design.length}m × ${s.design.width}m × ${s.design.height}m`;
 
     root.innerHTML = `
       <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -161,7 +172,7 @@ window.UI = window.UI || {};
 
         <h3>4. Shelter Geometry</h3>
         <p>Shape: ${s.design.shape} · Orientation: ${s.design.orientation}${s.design.orientation==="CUSTOM"?" ("+s.design.azimuthDeg+"° from South)":""} ·
-        Dimensions: ${s.design.length}m × ${s.design.width}m × ${s.design.height}m</p>
+        Dimensions: ${shapeDimensions} · Floor area: ${geom.floorArea.toFixed(1)} m² · Volume: ${geom.volume.toFixed(1)} m³</p>
 
         <h3>5–6. Material Specification &amp; Thermal Properties</h3>
         <table><tr><th>Element</th><th>Material</th><th>Thickness</th><th>U-value (W/m²K)</th></tr>

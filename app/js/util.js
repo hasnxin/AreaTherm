@@ -150,25 +150,29 @@ window.U = {
   },
 
   // Renders a validator's error list into a container and highlights the
-  // first field that has one, so the user sees exactly what to fix.
+  // first field that has one, so the user sees exactly what to fix. The
+  // offending field only actually lives on this page when this is called
+  // from the Shelter Designer itself — from every other caller (Guided
+  // Setup's Run step, Thermal Simulation, Optimization) the field was set
+  // on a different page/step, so there's nothing here to scroll to or
+  // focus; a link to the Shelter Designer is shown instead so the user
+  // still knows where to go, rather than the box silently doing nothing.
   showValidationErrors(root, containerSel, errors) {
     const box = this.qs(containerSel, root);
     if (!box) return;
     if (!errors || !errors.length) { box.innerHTML = ""; box.hidden = true; return; }
     box.hidden = false;
-    box.innerHTML = `<div class="validation-errors"><b>Fix before running:</b><ul>${
-      errors.map(e => `<li>${this.esc(e.message)}</li>`).join("")
-    }</ul></div>`;
     this.qsa("[data-field-invalid]", root).forEach(el => el.removeAttribute("data-field-invalid"));
     const first = errors.find(e => e.field);
-    if (first) {
-      const el = this.qs("#" + first.field, root);
-      if (el) {
-        el.setAttribute("data-field-invalid", "true");
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.focus();
-      }
+    const el = first ? this.qs("#" + first.field, root) : null;
+    if (el) {
+      el.setAttribute("data-field-invalid", "true");
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus();
     }
+    box.innerHTML = `<div class="validation-errors"><b>Fix before running:</b><ul>${
+      errors.map(e => `<li>${this.esc(e.message)}</li>`).join("")
+    }</ul>${!el ? `<p style="margin:6px 0 0;">These are design/geometry values — <a href="#/designer" style="color:inherit;font-weight:600;">go to Shelter Designer</a> to fix them.</p>` : ""}</div>`;
   },
 
   // Triggers a browser download of in-memory text content (CSV, etc.) with

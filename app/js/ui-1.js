@@ -1238,20 +1238,35 @@ window.UI = window.UI || {};
 
   function renderGuidedMaterials(root, s) {
     const d = s.design;
+    // These 3-of-9/3-of-5/3-of-any-value presets are a deliberate
+    // simplification (see MATERIAL_PRESETS above), but that means the
+    // current value — e.g. after adopting an Optimization recommendation,
+    // which now spans the full material library — often isn't one of
+    // them. A plain "selected" class then highlights nothing, silently
+    // implying no material is set at all. Surface what's actually
+    // configured whenever that happens, so the step is never misleading
+    // about the design's real state.
+    const wallCurrentPreset = MATERIAL_PRESETS.wall.some(p => p.id === d.wall.materialId);
+    const roofCurrentPreset = MATERIAL_PRESETS.roof.some(p => p.id === d.roof.materialId);
+    const insCurrentPreset = MATERIAL_PRESETS.insulation.includes(d.wall.insulationThicknessMm);
+    const currentNote = (label, matId) => `<p class="hint">Currently set: <b>${U.esc((DATA.materialById(matId) || {}).name || matId)}</b> — not one of these presets (set elsewhere, e.g. an adopted Optimization recommendation or the Shelter Designer). Picking one below will replace it.</p>`;
     root.innerHTML = `
       <h1>Guided Setup</h1>
       ${guidedStepBar(3)}
       <div class="card">
         <h3>Step 3 — Choose Materials</h3>
         <h3 style="margin-top:14px;">Wall</h3>
+        ${!wallCurrentPreset ? currentNote("Wall", d.wall.materialId) : ""}
         <div class="preset-row">${MATERIAL_PRESETS.wall.map(p => `
           <button class="preset-btn ${d.wall.materialId === p.id ? "selected" : ""}" data-wall="${p.id}">
             <span class="t">${p.label}</span><span class="s">${p.sub}</span></button>`).join("")}</div>
         <h3 style="margin-top:14px;">Roof</h3>
+        ${!roofCurrentPreset ? currentNote("Roof", d.roof.materialId) : ""}
         <div class="preset-row">${MATERIAL_PRESETS.roof.map(p => `
           <button class="preset-btn ${d.roof.materialId === p.id ? "selected" : ""}" data-roof="${p.id}">
             <span class="t">${p.label}</span><span class="s">${p.sub}</span></button>`).join("")}</div>
         <h3 style="margin-top:14px;">Insulation Thickness</h3>
+        ${!insCurrentPreset ? `<p class="hint">Currently set: <b>${d.wall.insulationThicknessMm} mm</b> — not one of these presets. Picking one below will replace it (for both wall and roof).</p>` : ""}
         <div class="preset-row">${MATERIAL_PRESETS.insulation.map(mm => `
           <button class="preset-btn ${d.wall.insulationThicknessMm === mm ? "selected" : ""}" data-ins="${mm}" style="min-width:90px;text-align:center;">
             <span class="t">${mm} mm</span></button>`).join("")}</div>
@@ -1356,7 +1371,7 @@ window.UI = window.UI || {};
       const check = window.APP_VALIDATOR.validateDesign(s);
       if (!check.valid) {
         U.showValidationErrors(root, "#gValidationErrors", check.errors);
-        window.APP.toast("Fix the highlighted design values before running.");
+        window.APP.toast("Fix the design issues listed below before running.");
         return;
       }
       U.showValidationErrors(root, "#gValidationErrors", []);

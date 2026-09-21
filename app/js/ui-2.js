@@ -290,7 +290,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       const check = window.APP_VALIDATOR.validateDesign(STORE.get());
       if (!check.valid) {
         U.showValidationErrors(root, "#simValidationErrors", check.errors);
-        window.APP.toast("Fix the highlighted design values before running.");
+        window.APP.toast("Fix the design issues listed below before running.");
         return;
       }
       U.showValidationErrors(root, "#simValidationErrors", []);
@@ -532,7 +532,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       const check = window.APP_VALIDATOR.validateDesign(s);
       if (!check.valid) {
         U.showValidationErrors(root, "#optValidationErrors", check.errors);
-        window.APP.toast("Fix the highlighted design values before running.");
+        window.APP.toast("Fix the design issues listed below before running.");
         return;
       }
       U.showValidationErrors(root, "#optValidationErrors", []);

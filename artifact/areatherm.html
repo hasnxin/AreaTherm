@@ -1011,25 +1011,29 @@ window.U = {
   },
 
   // Renders a validator's error list into a container and highlights the
-  // first field that has one, so the user sees exactly what to fix.
+  // first field that has one, so the user sees exactly what to fix. The
+  // offending field only actually lives on this page when this is called
+  // from the Shelter Designer itself — from every other caller (Guided
+  // Setup's Run step, Thermal Simulation, Optimization) the field was set
+  // on a different page/step, so there's nothing here to scroll to or
+  // focus; a link to the Shelter Designer is shown instead so the user
+  // still knows where to go, rather than the box silently doing nothing.
   showValidationErrors(root, containerSel, errors) {
     const box = this.qs(containerSel, root);
     if (!box) return;
     if (!errors || !errors.length) { box.innerHTML = ""; box.hidden = true; return; }
     box.hidden = false;
-    box.innerHTML = `<div class="validation-errors"><b>Fix before running:</b><ul>${
-      errors.map(e => `<li>${this.esc(e.message)}</li>`).join("")
-    }</ul></div>`;
     this.qsa("[data-field-invalid]", root).forEach(el => el.removeAttribute("data-field-invalid"));
     const first = errors.find(e => e.field);
-    if (first) {
-      const el = this.qs("#" + first.field, root);
-      if (el) {
-        el.setAttribute("data-field-invalid", "true");
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.focus();
-      }
+    const el = first ? this.qs("#" + first.field, root) : null;
+    if (el) {
+      el.setAttribute("data-field-invalid", "true");
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus();
     }
+    box.innerHTML = `<div class="validation-errors"><b>Fix before running:</b><ul>${
+      errors.map(e => `<li>${this.esc(e.message)}</li>`).join("")
+    }</ul>${!el ? `<p style="margin:6px 0 0;">These are design/geometry values — <a href="#/designer" style="color:inherit;font-weight:600;">go to Shelter Designer</a> to fix them.</p>` : ""}</div>`;
   },
 
   // Triggers a browser download of in-memory text content (CSV, etc.) with
@@ -4814,20 +4818,35 @@ window.UI = window.UI || {};
 
   function renderGuidedMaterials(root, s) {
     const d = s.design;
+    // These 3-of-9/3-of-5/3-of-any-value presets are a deliberate
+    // simplification (see MATERIAL_PRESETS above), but that means the
+    // current value — e.g. after adopting an Optimization recommendation,
+    // which now spans the full material library — often isn't one of
+    // them. A plain "selected" class then highlights nothing, silently
+    // implying no material is set at all. Surface what's actually
+    // configured whenever that happens, so the step is never misleading
+    // about the design's real state.
+    const wallCurrentPreset = MATERIAL_PRESETS.wall.some(p => p.id === d.wall.materialId);
+    const roofCurrentPreset = MATERIAL_PRESETS.roof.some(p => p.id === d.roof.materialId);
+    const insCurrentPreset = MATERIAL_PRESETS.insulation.includes(d.wall.insulationThicknessMm);
+    const currentNote = (label, matId) => `<p class="hint">Currently set: <b>${U.esc((DATA.materialById(matId) || {}).name || matId)}</b> — not one of these presets (set elsewhere, e.g. an adopted Optimization recommendation or the Shelter Designer). Picking one below will replace it.</p>`;
     root.innerHTML = `
       <h1>Guided Setup</h1>
       ${guidedStepBar(3)}
       <div class="card">
         <h3>Step 3 — Choose Materials</h3>
         <h3 style="margin-top:14px;">Wall</h3>
+        ${!wallCurrentPreset ? currentNote("Wall", d.wall.materialId) : ""}
         <div class="preset-row">${MATERIAL_PRESETS.wall.map(p => `
           <button class="preset-btn ${d.wall.materialId === p.id ? "selected" : ""}" data-wall="${p.id}">
             <span class="t">${p.label}</span><span class="s">${p.sub}</span></button>`).join("")}</div>
         <h3 style="margin-top:14px;">Roof</h3>
+        ${!roofCurrentPreset ? currentNote("Roof", d.roof.materialId) : ""}
         <div class="preset-row">${MATERIAL_PRESETS.roof.map(p => `
           <button class="preset-btn ${d.roof.materialId === p.id ? "selected" : ""}" data-roof="${p.id}">
             <span class="t">${p.label}</span><span class="s">${p.sub}</span></button>`).join("")}</div>
         <h3 style="margin-top:14px;">Insulation Thickness</h3>
+        ${!insCurrentPreset ? `<p class="hint">Currently set: <b>${d.wall.insulationThicknessMm} mm</b> — not one of these presets. Picking one below will replace it (for both wall and roof).</p>` : ""}
         <div class="preset-row">${MATERIAL_PRESETS.insulation.map(mm => `
           <button class="preset-btn ${d.wall.insulationThicknessMm === mm ? "selected" : ""}" data-ins="${mm}" style="min-width:90px;text-align:center;">
             <span class="t">${mm} mm</span></button>`).join("")}</div>
@@ -4932,7 +4951,7 @@ window.UI = window.UI || {};
       const check = window.APP_VALIDATOR.validateDesign(s);
       if (!check.valid) {
         U.showValidationErrors(root, "#gValidationErrors", check.errors);
-        window.APP.toast("Fix the highlighted design values before running.");
+        window.APP.toast("Fix the design issues listed below before running.");
         return;
       }
       U.showValidationErrors(root, "#gValidationErrors", []);
@@ -5253,7 +5272,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       const check = window.APP_VALIDATOR.validateDesign(STORE.get());
       if (!check.valid) {
         U.showValidationErrors(root, "#simValidationErrors", check.errors);
-        window.APP.toast("Fix the highlighted design values before running.");
+        window.APP.toast("Fix the design issues listed below before running.");
         return;
       }
       U.showValidationErrors(root, "#simValidationErrors", []);
@@ -5495,7 +5514,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       const check = window.APP_VALIDATOR.validateDesign(s);
       if (!check.valid) {
         U.showValidationErrors(root, "#optValidationErrors", check.errors);
-        window.APP.toast("Fix the highlighted design values before running.");
+        window.APP.toast("Fix the design issues listed below before running.");
         return;
       }
       U.showValidationErrors(root, "#optValidationErrors", []);
@@ -5716,6 +5735,17 @@ window.UI = window.UI || {};
     const season = STORE.currentSeason();
     const now = new Date();
     const simId = "SIM-" + now.getTime();
+    const geom = ENGINE.computeGeometry(s.design);
+    // design.length/width only hold real dimensions for a rectangular
+    // footprint — for a round shape they're stale leftovers from whatever
+    // was last typed into that (now-hidden) field, and an L-shape's actual
+    // footprint isn't length x width at all. Report per the fields the
+    // shape actually uses, the same way the Designer's own preview does.
+    const shapeDimensions = s.design.shape === "L_SHAPE"
+      ? `Wing A ${s.design.lengthA || 4}m × ${s.design.widthA || 4}m + Wing B ${s.design.lengthB || 3}m × ${s.design.widthB || 3}m, ${s.design.height}m height`
+      : ["CIRCULAR", "DOME", "SEMI_CIRCULAR"].includes(s.design.shape)
+      ? `⌀ ${s.design.diameter || 5}m, ${s.design.height}m height`
+      : `${s.design.length}m × ${s.design.width}m × ${s.design.height}m`;
 
     root.innerHTML = `
       <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -5752,7 +5782,7 @@ window.UI = window.UI || {};
 
         <h3>4. Shelter Geometry</h3>
         <p>Shape: ${s.design.shape} · Orientation: ${s.design.orientation}${s.design.orientation==="CUSTOM"?" ("+s.design.azimuthDeg+"° from South)":""} ·
-        Dimensions: ${s.design.length}m × ${s.design.width}m × ${s.design.height}m</p>
+        Dimensions: ${shapeDimensions} · Floor area: ${geom.floorArea.toFixed(1)} m² · Volume: ${geom.volume.toFixed(1)} m³</p>
 
         <h3>5–6. Material Specification &amp; Thermal Properties</h3>
         <table><tr><th>Element</th><th>Material</th><th>Thickness</th><th>U-value (W/m²K)</th></tr>
