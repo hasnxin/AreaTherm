@@ -7,11 +7,15 @@ window.UI = window.UI || {};
 
   // Steady-state point-balance approximation, kept consistent with the main
   // transient engine's conventions by calling the SAME shared helpers
-  // runSimulation uses (windAdjustedInfiltrationAch, ventUAFromAch) rather
-  // than re-deriving the ACH/UA formulas here — occupant heat is split
-  // sensible/latent (only the sensible share heats the air) and ventilation
-  // includes the same wind-adjusted infiltration plus occupancy-linked ACH
-  // increment as runSimulation. `season` is only needed for its windMs.
+  // runSimulation uses (windAdjustedInfiltrationAch, ventUAFromAch,
+  // estimateGroundTempC) rather than re-deriving the ACH/UA/ground-temp
+  // formulas here — occupant heat is split sensible/latent (only the
+  // sensible share heats the air) and ventilation includes the same
+  // wind-adjusted infiltration plus occupancy-linked ACH increment as
+  // runSimulation. `season` also carries the site's real NASA POWER
+  // monthly/annual climatology when the caller has it (see the
+  // #runValidationBtn handler below) — without it, the floor term falls
+  // back to referencing ambientC directly, same as before this existed.
   function predictSteadyState(design, ambientC, solarWm2, season) {
     const geom = ENGINE.computeGeometry(design);
     const uWall = ENGINE.wallUValue(design), uRoof = ENGINE.roofUValue(design), uFloor = ENGINE.floorUValue(design);
@@ -37,9 +41,17 @@ window.UI = window.UI || {};
     const infiltrationAch = ENGINE.windAdjustedInfiltrationAch(design, season || { windMs: 2 });
     const achTotal = infiltrationAch + ENGINE.occupancyAchIncrement(occ.persons, geom.volume);
     const ventUA = ENGINE.ventUAFromAch(achTotal, geom.volume);
-    const UA = uWall * netWallArea + uRoof * geom.roofArea + uFloor * geom.floorArea + windowCondUA + ventUA;
+    const floorUA = uFloor * geom.floorArea;
+    const UA = uWall * netWallArea + uRoof * geom.roofArea + floorUA + windowCondUA + ventUA;
     const solarGain = windowSolarGain + occ.totalSensibleW;
-    return ambientC + solarGain / UA;
+    // Ground temperature, same real per-location NASA POWER climatology
+    // runSimulation uses (see engine.js estimateGroundTempC) — only when
+    // this measured point's `season` actually carries it; otherwise the
+    // floor keeps referencing ambientC exactly as before (tGround-ambientC
+    // cancels to 0 below), the original disclosed simplification.
+    const hasClimatology = season && (Array.isArray(season.monthlyTemp) || Number.isFinite(season.avgTempCAnnual));
+    const tGround = hasClimatology ? ENGINE.estimateGroundTempC(season) : ambientC;
+    return ambientC + (floorUA * (tGround - ambientC) + solarGain) / UA;
   }
 
   let validationRows = [
@@ -162,8 +174,19 @@ window.UI = window.UI || {};
     }, root);
 
     U.on("#runValidationBtn", "click", () => {
+      // Each measured row supplies its own ambient/solar/wind, but not a
+      // ground temperature — pull the currently-loaded site's real NASA
+      // POWER climatology (if any) as the best available ground-temp
+      // context, same source runSimulation itself uses. If this validation
+      // dataset was actually recorded somewhere else, that's an inherent
+      // limit of a location-less measured-row format, not new from this.
+      const liveSeason = STORE.currentSeason();
       const points = validationRows.map(r => ({
-        ...r, predicted: Math.round(predictSteadyState(s.design, r.ambient, r.solar, { windMs: r.wind }) * 100) / 100
+        ...r, predicted: Math.round(predictSteadyState(s.design, r.ambient, r.solar, {
+          windMs: r.wind,
+          avgTempCAnnual: liveSeason && liveSeason.avgTempCAnnual,
+          monthlyTemp: liveSeason && liveSeason.monthlyTemp
+        }) * 100) / 100
       }));
       const stats = ENGINE.validationStats(points.map(p => ({ measured: p.measured, predicted: p.predicted })));
       STORE.addValidationDataset({ id: "VAL-" + Date.now(), ts: new Date().toISOString(), points, stats });
@@ -268,8 +291,12 @@ window.UI = window.UI || {};
 
         <h3>8. Assumptions</h3>
         <ul>
-          <li>Outside film coefficient fixed at 23 W/m²K, wind-adjusted infiltration.</li>
-          <li>Ground temperature assumed equal to seasonal mean ambient unless overridden.</li>
+          <li>Outside film coefficient: fixed at 23 W/m²K for the wall/roof U-value's design resistance (a static
+          assembly property); the hourly sol-air temperature term instead uses a wind-adjusted ASHRAE correlation
+          (5.8 + 3.9 × wind speed) driven by the site's real per-hour wind data. Wind-adjusted infiltration.</li>
+          <li>Ground temperature uses the site's real NASA POWER 20-year monthly climatology (one-month thermal lag)
+          when that data has loaded for the current location; falls back to the current forecast period's mean
+          ambient temperature otherwise — user-overridable.</li>
           <li>Longwave sky radiation exchange not separately modelled (folded into sol-air simplification).</li>
           <li>PCM thermal mass modelled via elevated apparent specific heat over its melt band.</li>
           <li>Occupant sensible/latent split uses simplified fixed fractions per activity level (see Settings), approximating
@@ -603,9 +630,13 @@ window.UI = window.UI || {};
           <h3>Assumptions &amp; Limitations</h3>
           <ul class="assumption-list">
             <li>Transient (hourly RC) model, not steady-state.</li>
-            <li>Outside film coefficient: 23 W/m²K, wind-adjusted infiltration.</li>
+            <li>Outside film coefficient: fixed at 23 W/m²K for the wall/roof U-value's design resistance (a static
+            assembly property); the hourly sol-air temperature term instead uses a wind-adjusted ASHRAE correlation
+            (5.8 + 3.9 × wind speed) driven by real per-hour wind data. Wind-adjusted infiltration.</li>
             <li>Sky longwave radiation folded into the sol-air simplification (no separate term).</li>
-            <li>Ground temperature defaults to seasonal mean ambient unless overridden.</li>
+            <li>Ground temperature uses the site's real NASA POWER 20-year monthly climatology (one-month thermal
+            lag) when loaded for the current location; falls back to the current forecast period's mean ambient
+            temperature otherwise — user-overridable.</li>
             <li>Occupant heat uses fixed watt figures per activity level (ASHRAE Fundamentals Ch. 9 / ISO 8996 order
             of magnitude) split into sensible/latent by simplified fixed fractions — not a literal reproduction of
             those references' exact tables. Latent heat is reported (kg/h moisture), not simulated as indoor humidity.</li>

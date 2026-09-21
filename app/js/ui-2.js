@@ -39,21 +39,31 @@ window.UI = window.UI || {};
     const geom = result.geometry, u = result.uValues.wall;
     const coldest = result.series.reduce((a, b) => a.tAmb < b.tAmb ? a : b);
     const face = geom.faces[0];
+    // h_o here is the hourly wind-adjusted ASHRAE film coefficient actually
+    // used for this timestep's sol-air term (see engine.js
+    // windAdjustedFilmCoefficient) — NOT the fixed 23 W/m²K used for the
+    // wall U-value's own static outside-air resistance above, a separate,
+    // deliberately non-wind-varying quantity (see config.js comment).
+    const windMsAtHour = season ? ENGINE.windSpeedAt(season, coldest.hourDecimal) : (season && season.windMs) || 0;
+    const hOuter = ENGINE.windAdjustedFilmCoefficient(windMsAtHour);
+    const absorptivity = (DATA.materialById(design.wall.materialId) || {}).absorptivity ?? 0.6;
     return `
       <p><b>Formula</b> (per face, sol-air adjusted):</p>
       <pre>Q_wall = U_wall × A_wall × (T_indoor − T_sol-air)
-T_sol-air = T_amb + (α × G_face) / h_o</pre>
+T_sol-air = T_amb + (α × G_face) / h_o
+h_o = 5.8 + 3.9 × wind speed (ASHRAE correlation, this hour's real wind)</pre>
       <p><b>Representative hour</b> — coldest ambient timestep in this run (hour ${coldest.hourDecimal.toFixed(1)}):</p>
       <pre>U_wall        = ${u.toFixed(3)} W/m²K   (from wall + insulation layers, see Materials)
 Total wall area = ${geom.wallArea.toFixed(1)} m²
 T_amb         = ${coldest.tAmb} °C
 T_indoor      = ${coldest.tIndoor} °C
 G (horizontal)= ${coldest.gHoriz} W/m²
-α (wall)      = ${(DATA.materialById(design.wall.materialId)||{}).absorptivity ?? 0.6}
-h_o           = 23 W/m²K
+α (wall)      = ${absorptivity}
+Wind (this hour) = ${windMsAtHour.toFixed(1)} m/s
+h_o           = 5.8 + 3.9 × ${windMsAtHour.toFixed(1)} ≈ ${hOuter.toFixed(1)} W/m²K
 
-T_sol-air (front face, factor ${face.factor.toFixed(2)}) = ${coldest.tAmb} + (${(DATA.materialById(design.wall.materialId)||{}).absorptivity ?? 0.6} × ${(coldest.gHoriz*face.factor).toFixed(1)}) / 23
-            ≈ ${(coldest.tAmb + ((DATA.materialById(design.wall.materialId)||{}).absorptivity ?? 0.6) * coldest.gHoriz*face.factor / 23).toFixed(2)} °C
+T_sol-air (front face, factor ${face.factor.toFixed(2)}) = ${coldest.tAmb} + (${absorptivity} × ${(coldest.gHoriz*face.factor).toFixed(1)}) / ${hOuter.toFixed(1)}
+            ≈ ${(coldest.tAmb + absorptivity * coldest.gHoriz*face.factor / hOuter).toFixed(2)} °C
 
 Q_wall (all faces, this hour) = ${coldest.qWall} W</pre>
       <p class="hint">Positive Q = heat leaving the shelter through the walls at this timestep.</p>`;
@@ -69,13 +79,24 @@ T_indoor = ${coldest.tIndoor} °C,  T_amb = ${coldest.tAmb} °C,  G = ${coldest.
 
 Q_roof (this hour) = ${coldest.qRoof} W</pre>`;
   }
-  function explainFloor(result, design) {
+  function explainFloor(result, design, season) {
     const geom = result.geometry, u = result.uValues.floor;
     const coldest = result.series.reduce((a, b) => a.tAmb < b.tAmb ? a : b);
+    // Same ground-temperature estimate runSimulation actually used for
+    // this design/location (see engine.js estimateGroundTempC) — real NASA
+    // POWER monthly climatology when loaded, else the forecast period's
+    // mean ambient. Constant for the whole run, unlike T_amb/T_indoor.
+    const tGround = design.groundTempC ?? (season ? ENGINE.estimateGroundTempC(season) : coldest.tAmb);
+    const groundSourceNote = design.groundTempC != null
+      ? "user override"
+      : (season && (Array.isArray(season.monthlyTemp) || Number.isFinite(season.avgTempCAnnual)))
+        ? "NASA POWER 20-yr monthly climatology, 1-month lag"
+        : "no site climatology loaded — forecast period's mean ambient";
     return `<pre>Q_floor = U_floor × A_floor × (T_indoor − T_ground)
 
 U_floor = ${u.toFixed(3)} W/m²K  (assumption: ground contact resistance 0.5 m²K/W + floor layer)
 A_floor = ${geom.floorArea.toFixed(1)} m²
+T_ground = ${tGround.toFixed(1)} °C  (${groundSourceNote}; constant for the whole run, not per-hour)
 T_indoor = ${coldest.tIndoor} °C
 
 Q_floor (this hour) = ${coldest.qFloor} W</pre>`;
@@ -161,7 +182,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
     const map = {
       solar: () => explainSolar(result, design),
       wall: () => explainWall(result, design, season), roof: () => explainRoof(result, design),
-      floor: () => explainFloor(result, design), opening: () => explainOpening(result, design),
+      floor: () => explainFloor(result, design, season), opening: () => explainOpening(result, design),
       vent: () => explainVent(result, design), mass: () => explainMass(result, design),
       score: () => explainScore(result)
     };
