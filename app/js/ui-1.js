@@ -38,6 +38,55 @@ window.UI = window.UI || {};
     { route: "settings", icon: "⚙️", title: "Settings", desc: "Units, assumptions & limitations — what's real vs. a documented model assumption." }
   ];
 
+  // Design Summary KPI grid — same 4 headline numbers already shown on the
+  // Simulation page (thermalComfortScore/solarKwh/totalLossKwh/comfort
+  // range), just surfaced here too so a returning user sees "how's my
+  // current design doing" without navigating away from the hub. Reads
+  // fields already computed by ENGINE.runSimulation and stored via
+  // STORE.recordSimulation — no new calculation.
+  function dashboardSummaryHtml(result) {
+    return `
+      <div class="grid grid-4" style="margin:18px 0;">
+        <div class="metric-card" style="text-align:center;">
+          <div class="metric-label">Thermal Comfort Score</div>
+          <div id="dashGauge"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Solar Gain</div>
+          <div class="metric-value" style="font-size:20px;">${result.daily.solarKwh}</div>
+          <div class="metric-sub">kWh/day</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Heat Loss</div>
+          <div class="metric-value" style="font-size:20px;">${result.daily.totalLossKwh}</div>
+          <div class="metric-sub">kWh/day</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Indoor Temp Range</div>
+          <div class="metric-value" style="font-size:20px;">${result.comfort.minIndoor}–${result.comfort.maxIndoor}°C</div>
+          <div class="metric-sub">Model Prediction</div>
+        </div>
+      </div>`;
+  }
+
+  // Lightweight recent-runs list (spec's "Recent Designs carousel", scoped
+  // down to a plain list — simulationHistory already exists in STORE,
+  // already capped at 20 entries, nothing new computed here either).
+  function recentDesignsHtml(hist) {
+    const recent = hist.slice(0, 3);
+    if (!recent.length) return "";
+    return `
+      <div class="card" style="margin:18px 0;">
+        <h3 style="margin-bottom:10px;">Recent Simulations</h3>
+        <div class="checklist" style="gap:10px;">
+          ${recent.map(h => `<li style="display:flex; justify-content:space-between; gap:10px;">
+            <span>${U.esc(h.designName || "Shelter design")} — ${U.esc(h.locationLabel || "—")}</span>
+            <span><b>${h.thermalComfortScore}/100</b> · ${new Date(h.ts).toLocaleDateString()}</span>
+          </li>`).join("")}
+        </div>
+      </div>`;
+  }
+
   UI.renderDashboard = function (root) {
     const s = STORE.get();
     const hist = s.simulationHistory;
@@ -45,10 +94,14 @@ window.UI = window.UI || {};
     root.innerHTML = `
       ${heroHtml(hist.length > 0)}
 
+      ${s.lastSimulationResult ? dashboardSummaryHtml(s.lastSimulationResult) : ""}
+
       ${s.location ? `<div class="card" style="margin:18px 0;">
           ${U.badge(s.climateSource)} <span class="hint">for ${U.esc(s.location.label)}</span>
           ${s.location.solarDataSource ? `<div class="hint" style="margin-top:6px;">Solar potential: <b>${s.location.annualSolarKwhM2Yr} kWh/m²/yr</b> · Avg. temp: <b>${s.location.avgTempCAnnual}°C</b> — NASA POWER (${U.esc(s.location.solarDataSource.period)})</div>` : ""}
         </div>` : ""}
+
+      ${recentDesignsHtml(hist)}
 
       <button class="hamburger-toggle" id="exploreToggle" aria-expanded="false" style="margin-top:${s.location ? "0" : "22px"};">
         <span class="hamburger-icon">☰</span> Explore the Platform
@@ -64,6 +117,8 @@ window.UI = window.UI || {};
             </a>`).join("")}
         </div>
       </div>`;
+
+    if (s.lastSimulationResult) CH.scoreGauge(U.qs("#dashGauge", root), s.lastSimulationResult.scores.thermalComfortScore);
 
     U.on("#heroDemoBtn", "click", () => window.APP.runLiveDemo(), root);
     U.on("#heroWorkflowBtn", "click", () => window.APP.navigate("guided"), root);
@@ -210,13 +265,13 @@ window.UI = window.UI || {};
       `;
     const hours = Array.from({ length: 25 }, (_, i) => i);
     CH.lineChart(U.qs("#climateChart", box), [
-      { name: "Ambient Temp (°C)", color: "#c93b3b", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
+      { name: "Ambient Temp (°C)", color: "#d32f2f", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
     ], { height: 200, yLabel: "°C", xLabel: "Hour of day", tempZones: true });
     const solarDiv = document.createElement("div");
     solarDiv.style.marginTop = "10px";
     U.qs("#climateChart", box).appendChild(solarDiv);
     CH.lineChart(solarDiv, [
-      { name: "Solar Irradiance (W/m²)", color: "#d98a12", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
+      { name: "Solar Irradiance (W/m²)", color: "#ff9800", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
     ], { height: 180, yLabel: "W/m²", xLabel: "Hour of day" });
 
     if (s.location && s.location.solarDataSource && s.location.solarDataSource.monthlyTemp) {
@@ -226,7 +281,7 @@ window.UI = window.UI || {};
         monthlyTemp.map(m => ({ label: m.month, mean: m.tempC, min: m.tempMinC, max: m.tempMaxC })),
         { height: 220, yLabel: "°C" });
       CH.lineChart(U.qs("#monthlySolarChart", box), [
-        { name: "Solar (kWh/m²/day)", color: "#d98a12", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
+        { name: "Solar (kWh/m²/day)", color: "#ff9800", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
       ], { height: 220, yLabel: "kWh/m²/day", xFormat: (x) => monthlyGhi[Math.round(x)] ? monthlyGhi[Math.round(x)].month : "" });
       const hottest = monthlyTemp.reduce((a, b) => (b.tempC > a.tempC ? b : a));
       const coldest = monthlyTemp.reduce((a, b) => (b.tempC < a.tempC ? b : a));
@@ -262,7 +317,7 @@ window.UI = window.UI || {};
           <button class="btn btn-accent" id="loadRealBtn">🌐 Load Real Weather (Open-Meteo)</button>
           <span id="fetchStatus" class="hint"></span>
         </div>
-        <div id="locationMap" style="height:260px; border-radius:8px; margin-top:12px; z-index:0;"></div>
+        <div id="locationMap" style="height:260px; border-radius:4px; margin-top:12px; z-index:0;"></div>
         <p class="hint" style="margin-top:6px;">Click a pin to load that location's live weather. Map tiles © <a href="https://www.esri.com" target="_blank" rel="noopener" style="color:var(--accent);">Esri</a>.</p>
         <p class="hint" style="margin-top:10px;">Live weather from
         <a href="https://open-meteo.com" target="_blank" rel="noopener" style="color:var(--accent);">Open-Meteo</a>
@@ -374,7 +429,7 @@ window.UI = window.UI || {};
           if (btn) btn.addEventListener("click", () => { map.closePopup(); loadLocationById(l.id); });
         });
       });
-      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#1f8a9e", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
+      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#1976d2", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
     }
 
     wireComfortCard(root);
@@ -506,7 +561,7 @@ window.UI = window.UI || {};
     const bearing = bearingOf(design);
     let shapeSvg;
     if (isRound) {
-      shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
+      shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
     } else if (isLShape) {
       const lApx = (design.lengthA || 4) * scale, wApx = (design.widthA || 4) * scale, wBpx = Math.min((design.widthB || 3) * scale, lApx);
       const ox = cx - w / 2, oy = cy - h / 2;
@@ -514,9 +569,9 @@ window.UI = window.UI || {};
         [ox, oy + h], [ox + lApx, oy + h], [ox + lApx, oy + h - wApx],
         [ox + wBpx, oy + h - wApx], [ox + wBpx, oy], [ox, oy]
       ];
-      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
+      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
     } else {
-      shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
+      shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
     }
 
     // Opening marks (doors, windows) on their actual configured face
@@ -546,9 +601,9 @@ window.UI = window.UI || {};
       const face = win.orientation || "FRONT";
       winCountByFace[face] = (winCountByFace[face] || 0) + (win.count || 0);
     });
-    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#2fb8cf")).join("");
+    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#2196f3")).join("");
     const door = design.doors && design.doors[0];
-    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#8a5a10") : "";
+    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#e65100") : "";
 
     const labelOffset = 16;
     const edges = isRound ? [] : [
@@ -787,7 +842,7 @@ window.UI = window.UI || {};
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>3D Preview <span class="tag tag-demo">illustrative</span></h3>
-            <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:8px; cursor:grab;"></canvas>
+            <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:4px; cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
             <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and each window group below are shown on their own configured face — each window group's face also drives its own share of the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
           </div>
@@ -857,7 +912,7 @@ window.UI = window.UI || {};
         doorCount: (design.doors || []).reduce((s, dr) => s + (dr.count || 0), 0),
         doorFace: (design.doors && design.doors[0] && design.doors[0].orientation) || "FRONT",
         windowGroups: (design.windows || []).map(w => ({ count: w.count || 0, orientation: w.orientation || "FRONT" })),
-        wallColor: WALL_COLOR_BY_MATERIAL[wallMatId] || "#dfeef2",
+        wallColor: WALL_COLOR_BY_MATERIAL[wallMatId] || "#e3f2fd",
         sunAngle: ENGINE.frontAzimuthOf(design)
       });
     }

@@ -25,11 +25,15 @@ window.APP_CHARTS = (function () {
   // 4-tier comfort-zone coloring for temperature charts — a simplified,
   // temperature-only proxy (not PMV/PPD; humidity/air-speed/clothing aren't
   // modeled here), disclosed as such wherever it's shown.
+  // Hex values match the --temp-cold/-comfortable/-warm/-hot custom
+  // properties in styles.css (design-spec temperature-zone palette) —
+  // kept as literals here rather than read via getComputedStyle since
+  // these SVG charts are drawn directly as DOM nodes, not through CSS.
   const TEMP_ZONES = [
-    { max: 15, color: "#3b7fc9", label: "Cold (<15°C)" },
-    { max: 27, color: "#2f9d55", label: "Comfortable (15–27°C)" },
-    { max: 32, color: "#d9a52f", label: "Warm (27–32°C)" },
-    { max: Infinity, color: "#c93b3b", label: "Hot (>32°C)" }
+    { max: 15, color: "#1976d2", label: "Cold (<15°C)" },
+    { max: 27, color: "#4caf50", label: "Comfortable (15–27°C)" },
+    { max: 32, color: "#fbc02d", label: "Warm (27–32°C)" },
+    { max: Infinity, color: "#d32f2f", label: "Hot (>32°C)" }
   ];
   function zoneColorFor(temp) { return (TEMP_ZONES.find(z => temp <= z.max) || TEMP_ZONES[TEMP_ZONES.length - 1]).color; }
 
@@ -376,7 +380,7 @@ window.APP_CHARTS = (function () {
     stack(LOSS_SERIES, -1);
 
     const netPts = rows.map(r => `${sx(r.hourDecimal)},${sy(r.qNet)}`).join(" ");
-    svg.appendChild(el("polyline", { points: netPts, class: "chart-line", style: "stroke:#152233;stroke-width:2.5" }));
+    svg.appendChild(el("polyline", { points: netPts, class: "chart-line", style: "stroke:#212121;stroke-width:2.5" }));
 
     if (opts.yLabel) {
       const lbl = textEl(14, mt + plotH / 2, opts.yLabel, "chart-axis-label", "middle");
@@ -398,7 +402,7 @@ window.APP_CHARTS = (function () {
 
     const legend = document.createElement("div");
     legend.className = "chart-legend";
-    GAIN_SERIES.concat(LOSS_SERIES).concat([{ label: "Net", color: "#152233" }]).forEach(s => {
+    GAIN_SERIES.concat(LOSS_SERIES).concat([{ label: "Net", color: "#212121" }]).forEach(s => {
       const item = document.createElement("span");
       item.className = "chart-legend-item";
       item.innerHTML = `<i style="background:${s.color}"></i>${s.label}`;

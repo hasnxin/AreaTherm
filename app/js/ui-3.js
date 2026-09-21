@@ -40,6 +40,64 @@ window.UI = window.UI || {};
     { hour: 20, ambient: -9, solar: 0, wind: 1.8, rh: 38, measured: 1 }
   ];
 
+  // Categorized honest-status summary — the same real facts already
+  // written out in Settings' "Assumptions & Limitations" card (ui-3.js,
+  // UI.renderSettings), just regrouped under the model/data/materials
+  // headings a reviewer would look for. No claim here that isn't already
+  // stated elsewhere in the app — deliberately does NOT include invented
+  // accuracy figures (e.g. a specific +/-X C error band) since this
+  // prototype's accuracy against real shelters has not been measured yet.
+  function modelAssumptionsHtml() {
+    return `
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Model Assumptions &amp; Reliability</h3>
+        <div class="callout-error card" style="margin-bottom:14px;">
+          <h3>Validation Status: Not Field-Validated</h3>
+          <p style="margin:0;">Expected model accuracy has not been formally quantified against field measurements —
+          no instrumented-shelter dataset exists yet. Treat results as model predictions for design comparison, not a
+          substitute for engineering sign-off before construction.</p>
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <h3>Physics Model</h3>
+            <ul class="assumption-list">
+              <li>✓ Transient (hourly RC, 2-node) model, not steady-state.</li>
+              <li>✓ Accounts for solar gain, thermal mass, ground-coupled floor loss, and ventilation.</li>
+              <li>✗ Not modeled: full 3D heat conduction, air stratification, moisture transport (latent heat is reported, not simulated as indoor humidity).</li>
+              <li>✗ Sky longwave radiation is folded into the sol-air simplification, not a separate term.</li>
+              <li>⚠ Ventilation (ACH) uses a documented per-person fresh-air allowance (${CFG.PHYSICS.OCCUPANT_FRESH_AIR_LPS} L/s/person) — an order-of-magnitude guideline, not a ventilation-code compliance calculation.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Data Sources</h3>
+            <ul class="assumption-list">
+              <li>✓ Open-Meteo: live 7-day hourly forecast average.</li>
+              <li>✓ NASA POWER: real 20-year solar/temperature climatology.</li>
+              <li>✓ Open-Meteo Elevation API: real elevation lookup.</li>
+              <li>⚠ Weather is a forecast average, not a real-time or historical field measurement.</li>
+              <li>⚠ A network hiccup falls back to cached data — always clearly labelled as cached or stale, never silently shown as live.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Material Properties</h3>
+            <ul class="assumption-list">
+              <li>✓ Sourced from engineering handbook reference values.</li>
+              <li>⚠ Costs are a materials + installation + waste-factor planning estimate — not a CPWD/state PWD Schedule of Rates or vendor quotation.</li>
+              <li>⚠ Thermal properties assume uniform, homogeneous materials.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Comfort &amp; Scoring</h3>
+            <ul class="assumption-list">
+              <li>⚠ Thermal Comfort Score is a custom, project-defined weighted index — not PMV/PPD or any recognised thermal-comfort standard.</li>
+              <li>⚠ Comfort-zone colour bands (18–27°C etc.) are a simplified temperature-only proxy; real comfort also depends on humidity, air speed and clothing.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:10px;">Full field-validated assumptions list: see Settings → Assumptions &amp; Limitations. The tool below compares the model against your own measured readings when you have them.</p>
+      </div>`;
+  }
+
   UI.renderValidation = function (root) {
     const s = STORE.get();
 
@@ -49,6 +107,8 @@ window.UI = window.UI || {};
       instrumented shelter) to compare against the model's prediction. No field measurements exist for this prototype —
       the rows below are editable placeholders you can overwrite. Requires field validation before use in a real
       engineering decision.</p>
+
+      ${modelAssumptionsHtml()}
 
       <div class="card">
         <h3>Measured Data Points</h3>

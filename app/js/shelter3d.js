@@ -37,7 +37,7 @@ export class Shelter3D {
       shape: "RECTANGULAR", width: 6, length: 4, height: 3, diameter: 5,
       lengthA: 4, widthA: 4, lengthB: 3, widthB: 3,
       doorCount: 1, doorFace: "FRONT", windowGroups: [{ count: 2, orientation: "FRONT" }],
-      wallColor: "#dfeef2", sunAngle: 135
+      wallColor: "#e3f2fd", sunAngle: 135
     };
 
     this._initScene();
@@ -94,7 +94,7 @@ export class Shelter3D {
     // stays visible (and correctly lit — MeshLambertMaterial flips the
     // normal for back-facing fragments automatically) no matter which way
     // a given face happens to wind.
-    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xdfeef2, side: THREE.DoubleSide });
+    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xe3f2fd, side: THREE.DoubleSide });
     this.wallGroup = new THREE.Group(); // holds whichever geometry the current shape needs (1 mesh for box/cylinder, 2 for dome, 1 extrusion for L-shape)
     this.shelterGroup.add(this.wallGroup);
 
@@ -103,7 +103,7 @@ export class Shelter3D {
     // outside the building (PlaneGeometry only renders its front face by
     // default, and that face points inward here).
     this.doorMaterial = new THREE.MeshLambertMaterial({ color: 0x5a3d2b, side: THREE.DoubleSide });
-    this.windowMaterial = new THREE.MeshLambertMaterial({ color: 0x2fb8cf, side: THREE.DoubleSide });
+    this.windowMaterial = new THREE.MeshLambertMaterial({ color: 0x2196f3, side: THREE.DoubleSide });
     this.openingsGroup = new THREE.Group();
     this.shelterGroup.add(this.openingsGroup);
   }

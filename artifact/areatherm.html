@@ -27,51 +27,65 @@
 <style>
 :root{
   --navy-900:#0b1a2b; --navy-800:#122840; --navy-700:#1a3a5c;
-  --accent:#1f8a9e; --accent-bright:#2fb8cf;
-  --bg:#f4f7f9; --panel:#ffffff; --border:#dfe6ec;
-  --text:#152233; --text-muted:#5b6b7c; --text-faint:#8b98a6;
-  --good:#1f9d55; --warn:#d98a12; --bad:#c93b3b;
+  /* Primary palette — DRDO/SIH design-spec tokens (AREATHERM_UI_UX_DESIGN_PROMPT.md) */
+  --accent:#1976d2; --accent-bright:#2196f3;
+  --bg:#fafafa; --panel:#ffffff; --border:#e0e0e0;
+  --text:#212121; --text-muted:#757575; --text-faint:#9e9e9e;
+  --good:#4caf50; --warn:#ff9800; --bad:#d32f2f;
   --input-bg:#ffffff;
-  --tag-demo-bg:#fdf0d8; --tag-demo-fg:#8a5a10;
-  --tag-model-bg:#dff1f5; --tag-model-fg:#166273;
-  --tag-input-bg:#e6f4ea; --tag-input-fg:#1c7a3d;
-  --tag-field-bg:#f0e6f9; --tag-field-fg:#6b2fa3;
-  --row-highlight:#e9f8ee; --th-bg:#f8fafb;
-  --chart-grid:#e7edf1; --chart-axis:#c4d0d9; --comfort-band:#d7f3e3;
-  --recommend-bg:#f3fbf5;
-  --workflow-old-bg:#fbeceb; --workflow-old-border:#f1c6c2;
-  --workflow-new-bg:#eaf7ee; --workflow-new-border:#bfe6cb;
-  --modal-bg:#ffffff; --pre-bg:#f4f7f9;
-  --active-tint:#eaf6f8;
-  --data-real-bg:#e6f6ec; --data-real-fg:#166a35; --data-real-border:#bfe6cb;
-  --data-illus-bg:#fdf0d8; --data-illus-fg:#8a5a10; --data-illus-border:#f3ddac;
-  --error-bg:#fdeceb; --error-border:#f0bcb8;
+  /* Chart-only temperature-zone colors — distinct from the --good/--warn/--bad
+     general UI-state semantics above (e.g. --warn is caution-orange, but the
+     "warm" temperature zone is a separate yellow per the design spec). */
+  --temp-cold:#1976d2; --temp-comfortable:#4caf50; --temp-warm:#fbc02d; --temp-hot:#d32f2f;
+  --tag-demo-bg:#fff3e0; --tag-demo-fg:#e65100;
+  --tag-model-bg:#e3f2fd; --tag-model-fg:#0d47a1;
+  --tag-input-bg:#e8f5e9; --tag-input-fg:#1b5e20;
+  --tag-field-bg:#f3e5f5; --tag-field-fg:#4a148c;
+  --row-highlight:#e8f5e9; --th-bg:#f5f5f5;
+  --chart-grid:#eeeeee; --chart-axis:#bdbdbd; --comfort-band:#e8f5e9;
+  --recommend-bg:#e8f5e9;
+  --workflow-old-bg:#ffebee; --workflow-old-border:#ffcdd2;
+  --workflow-new-bg:#e8f5e9; --workflow-new-border:#c8e6c9;
+  --modal-bg:#ffffff; --pre-bg:#fafafa;
+  --active-tint:#e3f2fd;
+  --data-real-bg:#e8f5e9; --data-real-fg:#2e7d32; --data-real-border:#c8e6c9;
+  --data-illus-bg:#fff3e0; --data-illus-fg:#e65100; --data-illus-border:#ffe0b2;
+  --error-bg:#ffebee; --error-border:#ffcdd2;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+  --sans: "Helvetica Neue", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+  /* Spacing scale — applied to macro layout spacing (page/card/grid gaps),
+     not forced onto every micro-component padding. */
+  --spacing-xs:4px; --spacing-sm:8px; --spacing-md:16px; --spacing-lg:24px; --spacing-xl:32px;
+  /* Type scale */
+  --text-heading:24px; --text-subheading:18px; --text-body:14px; --line-height:1.5;
+  /* Elevation */
+  --shadow-sm:0 1px 3px rgba(0,0,0,.12); --shadow-md:0 2px 8px rgba(0,0,0,.15);
+  --radius-card:4px; --radius-btn:0px;
 }
 /* Dark mode: toggled via Settings -> Appearance (sets documentElement's
    data-theme attribute). Only the light-chrome variables flip — the sidebar
    is already dark navy in both modes by design. */
 :root[data-theme="dark"]{
-  --accent:#35a8bf; --accent-bright:#4fc9e0;
-  --bg:#0d1520; --panel:#16202c; --border:#2a3949;
-  --text:#e4ebf0; --text-muted:#93a3b5; --text-faint:#64768a;
-  --good:#3ecb7a; --warn:#e8a94a; --bad:#e2685f;
-  --input-bg:#1a2632;
-  --tag-demo-bg:#3a2f12; --tag-demo-fg:#e8b862;
-  --tag-model-bg:#12333a; --tag-model-fg:#6fd0e0;
-  --tag-input-bg:#123322; --tag-input-fg:#5fd98a;
-  --tag-field-bg:#2a1f3a; --tag-field-fg:#c199e8;
-  --row-highlight:#123322; --th-bg:#1a2632;
-  --chart-grid:#26333f; --chart-axis:#3d4f60; --comfort-band:#1a4530;
-  --recommend-bg:#0f2a1c;
-  --workflow-old-bg:#3a1c1a; --workflow-old-border:#5c2f2b;
-  --workflow-new-bg:#123322; --workflow-new-border:#1f5c3a;
-  --modal-bg:#16202c; --pre-bg:#0d1520;
-  --active-tint:#12333a;
-  --data-real-bg:#123322; --data-real-fg:#5fd98a; --data-real-border:#1f5c3a;
-  --data-illus-bg:#3a2f12; --data-illus-fg:#e8b862; --data-illus-border:#6b551f;
-  --error-bg:#3a1c1a; --error-border:#5c2f2b;
+  --accent:#64b5f6; --accent-bright:#90caf9;
+  --bg:#121212; --panel:#1e1e1e; --border:#333333;
+  --text:#ffffff; --text-muted:#b0b0b0; --text-faint:#7a7a7a;
+  --good:#81c784; --warn:#ffb74d; --bad:#e57373;
+  --input-bg:#2a2a2a;
+  --temp-cold:#64b5f6; --temp-comfortable:#81c784; --temp-warm:#ffd54f; --temp-hot:#e57373;
+  --tag-demo-bg:#4a2f0a; --tag-demo-fg:#ffcc80;
+  --tag-model-bg:#0d2847; --tag-model-fg:#90caf9;
+  --tag-input-bg:#0d3311; --tag-input-fg:#a5d6a7;
+  --tag-field-bg:#2e0f42; --tag-field-fg:#ce93d8;
+  --row-highlight:#0d3311; --th-bg:#252525;
+  --chart-grid:#333333; --chart-axis:#4a4a4a; --comfort-band:#1b3d1e;
+  --recommend-bg:#0d2410;
+  --workflow-old-bg:#3a1414; --workflow-old-border:#5c2424;
+  --workflow-new-bg:#0d2410; --workflow-new-border:#1f4a22;
+  --modal-bg:#1e1e1e; --pre-bg:#121212;
+  --active-tint:#0d2847;
+  --data-real-bg:#0d2410; --data-real-fg:#81c784; --data-real-border:#1f4a22;
+  --data-illus-bg:#4a2f0a; --data-illus-fg:#ffb74d; --data-illus-border:#5c3d14;
+  --error-bg:#3a1414; --error-border:#5c2424;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;height:100%;}
@@ -119,7 +133,7 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
    closed and opens), so both live on the same button without JS needing to
    know the viewport width: only the media query that matches has any
    effect, so toggling both classes together on every click is safe. */
-@media (min-width:861px){
+@media (min-width:769px){
   .app-shell.sidebar-collapsed .sidebar{transform:translateX(-100%);}
   .app-shell.sidebar-collapsed .content{margin-left:0;}
 }
@@ -127,19 +141,25 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 .topbar-project{display:flex; flex-direction:column; min-width:0;}
 .topbar-label{font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint);}
 .topbar-value{font-weight:600; font-size:14px;}
-.btn{border:1px solid var(--border); background:var(--panel); padding:8px 14px; border-radius:6px; font-size:12.5px; font-weight:600; color:var(--text);}
+.btn{border:1px solid var(--border); background:var(--panel); padding:8px 14px; border-radius:var(--radius-btn); font-size:12.5px; font-weight:600; color:var(--text);}
 .btn:hover{border-color:var(--accent); color:var(--accent);}
 .btn-accent{background:var(--accent); color:#fff; border-color:var(--accent);}
 .btn-accent:hover{background:var(--accent-bright); color:#fff;}
 .btn-sm{padding:5px 10px; font-size:11.5px;}
 
 .view{padding:22px 26px 60px; max-width:1320px;}
+@media (min-width:769px){ .card{padding:var(--spacing-lg);} }
 
 /* Typography helpers */
-h1{font-size:21px; margin:0 0 4px;}
-h2{font-size:16px; margin:0 0 12px;}
+h1{font-size:var(--text-heading); margin:0 0 4px; font-weight:700;}
+h2{font-size:var(--text-subheading); margin:0 0 12px; font-weight:700;}
 h3{font-size:13.5px; margin:0 0 8px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted);}
-.subtitle{color:var(--text-muted); font-size:13px; margin-bottom:20px;}
+.subtitle{color:var(--text-muted); font-size:13px; margin-bottom:20px; line-height:var(--line-height);}
+/* Prose/body copy gets the spec's 1.5x readability line-height; compact UI
+   chrome (buttons, nav, tables, tags) keeps its existing tighter spacing —
+   applying 1.5 globally would visibly inflate the height of every single-line
+   badge/button/table-row across the app. */
+p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
 .tag{display:inline-block; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; padding:2px 8px; border-radius:999px; font-weight:700;}
 .tag-demo{background:var(--tag-demo-bg); color:var(--tag-demo-fg);}
 .tag-model{background:var(--tag-model-bg); color:var(--tag-model-fg);}
@@ -151,30 +171,33 @@ h3{font-size:13.5px; margin:0 0 8px; text-transform:uppercase; letter-spacing:.0
 .grid-4{grid-template-columns:repeat(4,1fr);}
 .grid-3{grid-template-columns:repeat(3,1fr);}
 .grid-2{grid-template-columns:repeat(2,1fr);}
-@media (max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-3{grid-template-columns:repeat(2,1fr);}}
+@media (max-width:1024px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-3{grid-template-columns:repeat(2,1fr);}}
 
-.card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 18px;}
+.card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm);}
 .card-tight{padding:12px 14px;}
+/* Self-sufficient even without the .card class alongside it (both patterns
+   exist in the markup today) — a KPI tile always gets proper chrome. */
+.metric-card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm);}
 .metric-card .metric-label{font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px;}
 .metric-card .metric-value{font-size:26px; font-weight:700; font-family:var(--mono);}
 .metric-card .metric-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
 
 /* Status callouts (replace ad-hoc inline styles so dark mode can reach them) */
-.callout-warn{background:#fdf0d8; border-color:#f3ddac;}
-.callout-warn h3{color:#8a5a10; margin:0 0 6px; text-transform:none; letter-spacing:normal; font-size:14px;}
-.callout-error{border-color:var(--bad); background:#fdf2f1;}
+.callout-warn{background:var(--tag-demo-bg); border-color:var(--data-illus-border);}
+.callout-warn h3{color:var(--tag-demo-fg); margin:0 0 6px; text-transform:none; letter-spacing:normal; font-size:14px;}
+.callout-error{border-color:var(--bad); background:var(--error-bg);}
 .callout-error h3{color:var(--bad); margin:0 0 6px; text-transform:none; letter-spacing:normal; font-size:14px;}
 
 /* Forms */
 .form-row{display:flex; flex-direction:column; gap:5px; margin-bottom:12px;}
 .form-row label{font-size:11.5px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.02em;}
 .form-row input, .form-row select, .form-row textarea{
-  padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:var(--input-bg); color:var(--text); font-family:inherit;
+  padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-card); font-size:13px; background:var(--input-bg); color:var(--text); font-family:inherit;
 }
 .form-row .hint{font-size:11px; color:var(--text-faint); font-weight:400; text-transform:none;}
 .form-inline{display:flex; gap:12px; flex-wrap:wrap;}
 .form-inline .form-row{flex:1; min-width:140px;}
-fieldset{border:1px solid var(--border); border-radius:8px; padding:14px; margin:0 0 16px;}
+fieldset{border:1px solid var(--border); border-radius:var(--radius-card); padding:14px; margin:0 0 16px;}
 legend{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--accent); padding:0 6px;}
 
 /* Tables */
@@ -203,7 +226,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .chart-point{fill:var(--accent); opacity:.75;}
 
 .chart-crosshair{stroke:var(--text-faint); stroke-width:1; stroke-dasharray:3 3;}
-.chart-tooltip{position:absolute; top:14px; background:#152233; color:#fff; font-size:11px; padding:8px 10px; border-radius:6px; pointer-events:none; z-index:5; box-shadow:0 6px 18px rgba(0,0,0,.25); min-width:150px;}
+.chart-tooltip{position:absolute; top:14px; background:#212121; color:#fff; font-size:11px; padding:8px 10px; border-radius:var(--radius-card); pointer-events:none; z-index:5; box-shadow:0 6px 18px rgba(0,0,0,.25); min-width:150px;}
 .chart-tooltip i{width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:5px;}
 .chart-tooltip b{display:block; margin-bottom:3px;}
 .chart-tooltip div{white-space:nowrap;}
@@ -221,7 +244,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .checklist li::before{content:"✓ "; color:var(--good); font-weight:700;}
 
 /* Recommended design panel */
-.recommend-panel{border:1.5px solid var(--good); background:var(--recommend-bg); border-radius:10px; padding:18px 20px;}
+.recommend-panel{border:1.5px solid var(--good); background:var(--recommend-bg); border-radius:var(--radius-card); padding:18px 20px;}
 .recommend-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:10px;}
 .recommend-item .k{font-size:10.5px; text-transform:uppercase; color:var(--text-muted); letter-spacing:.03em;}
 .recommend-item .v{font-weight:700; font-size:14px;}
@@ -233,7 +256,7 @@ td.num{font-family:var(--mono); text-align:right;}
 /* Modal */
 .modal-overlay{position:fixed; inset:0; background:rgba(10,20,30,.5); display:flex; align-items:center; justify-content:center; z-index:100;}
 .modal-overlay.hidden{display:none;}
-.modal{background:var(--modal-bg); border-radius:10px; width:640px; max-width:92vw; max-height:82vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.modal{background:var(--modal-bg); border-radius:var(--radius-card); width:640px; max-width:92vw; max-height:82vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.3);}
 .modal-header{display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--border);}
 .modal-close{background:none; border:none; font-size:16px; color:var(--text-muted);}
 .modal-body{padding:16px 20px; overflow-y:auto; font-size:13px; line-height:1.6;}
@@ -265,7 +288,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .validation-errors{ background:var(--error-bg); border:1px solid var(--error-border); border-radius:8px; padding:10px 14px; margin:10px 0; font-size:12.5px; color:var(--bad); }
 .validation-errors ul{ margin:4px 0 0; padding-left:18px; }
 .validation-errors li{ margin-bottom:2px; }
-[data-field-invalid]{ border-color:var(--bad) !important; box-shadow:0 0 0 2px rgba(201,59,59,.15); }
+[data-field-invalid]{ border-color:var(--bad) !important; box-shadow:0 0 0 2px rgba(211,47,47,.15); }
 
 /* Data source badges */
 .data-badge{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:6px; margin:4px 0;}
@@ -282,8 +305,8 @@ td.num{font-family:var(--mono); text-align:right;}
 .explore-body.open{display:block; margin-top:4px;}
 
 /* Dashboard — explore-the-platform tiles */
-.nav-tile{display:block; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 18px; transition:border-color .15s, box-shadow .15s, transform .15s;}
-.nav-tile:hover{border-color:var(--accent); box-shadow:0 2px 10px rgba(31,138,158,.12); transform:translateY(-1px);}
+.nav-tile{display:block; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm); transition:border-color .15s, box-shadow .15s, transform .15s;}
+.nav-tile:hover{border-color:var(--accent); box-shadow:0 2px 10px rgba(25,118,210,.12); transform:translateY(-1px);}
 .nav-tile-icon{font-size:20px; margin-bottom:8px;}
 .nav-tile-title{font-size:13.5px; font-weight:700; color:var(--text); margin-bottom:4px;}
 .nav-tile-desc{font-size:12px; color:var(--text-muted); line-height:1.45;}
@@ -298,7 +321,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .wizard-step.done .num{background:var(--good);}
 .wizard-nav{display:flex; justify-content:space-between; margin-top:18px;}
 .preset-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
-.preset-btn{border:1.5px solid var(--border); background:var(--panel); padding:10px 14px; border-radius:8px; font-size:12.5px; font-weight:600; text-align:left; min-width:150px;}
+.preset-btn{border:1.5px solid var(--border); background:var(--panel); padding:10px 14px; border-radius:var(--radius-btn); font-size:12.5px; font-weight:600; text-align:left; min-width:150px;}
 .preset-btn .t{display:block; font-weight:700; color:var(--text);}
 .preset-btn .s{display:block; font-size:11px; color:var(--text-faint); font-weight:400; margin-top:2px;}
 .preset-btn.selected{border-color:var(--accent); background:var(--active-tint);}
@@ -307,7 +330,7 @@ td.num{font-family:var(--mono); text-align:right;}
 /* Mobile: sidebar becomes an off-canvas drawer opened via the hamburger
    button in the topbar, closed by tapping the backdrop, a nav link, or
    the ✕ in the drawer header. */
-@media (max-width:860px){
+@media (max-width:768px){
   .sidebar{transform:translateX(-100%); z-index:50;}
   .sidebar.open{transform:translateX(0); box-shadow:0 0 40px rgba(0,0,0,.35);}
   .sidebar-backdrop.open{display:block;}
@@ -331,28 +354,17 @@ td.num{font-family:var(--mono); text-align:right;}
   body{background:#fff;}
 }
 
-/* ---- Dark mode overrides for elements that use a hardcoded light tint
-   rather than a theme variable (status pills, highlighted rows, panels). ---- */
-:root[data-theme="dark"] .data-badge.real{background:#12351f; color:#7be3a4; border-color:#1f5a35;}
-:root[data-theme="dark"] .data-badge.illustrative{background:#3a2c10; color:#f0c368; border-color:#5c451a;}
-:root[data-theme="dark"] .tag-demo{background:#3a2c10; color:#f0c368;}
-:root[data-theme="dark"] .tag-model{background:#0f2e36; color:#7fd8ea;}
-:root[data-theme="dark"] .tag-input{background:#12351f; color:#7be3a4;}
-:root[data-theme="dark"] .tag-field{background:#2a1f3d; color:#c9a6f0;}
-:root[data-theme="dark"] tr.highlight-recommended{background:#12291b;}
-:root[data-theme="dark"] .recommend-panel{background:#0f2417; border-color:#1f5a35;}
-:root[data-theme="dark"] th{background:#182636;}
+/* ---- Dark mode: everything above already re-themes automatically via the
+   --* custom properties redefined in the :root[data-theme="dark"] block up
+   top (data-badge/tag/highlight-row/recommend-panel/th/gauge-track/wizard-
+   step/preset-btn/form-input/comfort-band/callouts all reference vars in
+   their base rules now). Only two things genuinely need a dark-specific
+   rule: .heatflow-bar-track, which has no base styles.css rule to flip (set
+   inline/elsewhere) so it needs its own dark value here; and the comfort
+   band's opacity, intentionally lower in dark mode so the fill doesn't read
+   too bright against a near-black background. ---- */
 :root[data-theme="dark"] .heatflow-bar-track{background:#1b2a3c;}
-:root[data-theme="dark"] .gauge-track{stroke:#233246;}
-:root[data-theme="dark"] .wizard-step.active{background:#0f2e36;}
-:root[data-theme="dark"] .preset-btn.selected{background:#0f2e36;}
-:root[data-theme="dark"] .form-row input, :root[data-theme="dark"] .form-row select, :root[data-theme="dark"] .form-row textarea{background:#0d1826; color:var(--text); border-color:var(--border);}
-:root[data-theme="dark"] .chart-comfort-band{fill:#12351f; opacity:.45;}
-:root[data-theme="dark"] .callout-warn{background:#3a2c10; border-color:#5c451a;}
-:root[data-theme="dark"] .callout-warn h3{color:#f0c368;}
-:root[data-theme="dark"] .callout-error{background:#3a1614; border-color:#5c2420;}
-:root[data-theme="dark"] .workflow-col.old{background:#3a1614; border-color:#5c2420;}
-:root[data-theme="dark"] .workflow-col.new{background:#0f2417; border-color:#1f5a35;}
+:root[data-theme="dark"] .chart-comfort-band{opacity:.45;}
 @media print{ :root[data-theme="dark"] body{background:#fff; color:#000;} }
 
 </style>
@@ -458,7 +470,7 @@ export class Shelter3D {
       shape: "RECTANGULAR", width: 6, length: 4, height: 3, diameter: 5,
       lengthA: 4, widthA: 4, lengthB: 3, widthB: 3,
       doorCount: 1, doorFace: "FRONT", windowGroups: [{ count: 2, orientation: "FRONT" }],
-      wallColor: "#dfeef2", sunAngle: 135
+      wallColor: "#e3f2fd", sunAngle: 135
     };
 
     this._initScene();
@@ -515,7 +527,7 @@ export class Shelter3D {
     // stays visible (and correctly lit — MeshLambertMaterial flips the
     // normal for back-facing fragments automatically) no matter which way
     // a given face happens to wind.
-    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xdfeef2, side: THREE.DoubleSide });
+    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xe3f2fd, side: THREE.DoubleSide });
     this.wallGroup = new THREE.Group(); // holds whichever geometry the current shape needs (1 mesh for box/cylinder, 2 for dome, 1 extrusion for L-shape)
     this.shelterGroup.add(this.wallGroup);
 
@@ -524,7 +536,7 @@ export class Shelter3D {
     // outside the building (PlaneGeometry only renders its front face by
     // default, and that face points inward here).
     this.doorMaterial = new THREE.MeshLambertMaterial({ color: 0x5a3d2b, side: THREE.DoubleSide });
-    this.windowMaterial = new THREE.MeshLambertMaterial({ color: 0x2fb8cf, side: THREE.DoubleSide });
+    this.windowMaterial = new THREE.MeshLambertMaterial({ color: 0x2196f3, side: THREE.DoubleSide });
     this.openingsGroup = new THREE.Group();
     this.shelterGroup.add(this.openingsGroup);
   }
@@ -2620,11 +2632,15 @@ window.APP_CHARTS = (function () {
   // 4-tier comfort-zone coloring for temperature charts — a simplified,
   // temperature-only proxy (not PMV/PPD; humidity/air-speed/clothing aren't
   // modeled here), disclosed as such wherever it's shown.
+  // Hex values match the --temp-cold/-comfortable/-warm/-hot custom
+  // properties in styles.css (design-spec temperature-zone palette) —
+  // kept as literals here rather than read via getComputedStyle since
+  // these SVG charts are drawn directly as DOM nodes, not through CSS.
   const TEMP_ZONES = [
-    { max: 15, color: "#3b7fc9", label: "Cold (<15°C)" },
-    { max: 27, color: "#2f9d55", label: "Comfortable (15–27°C)" },
-    { max: 32, color: "#d9a52f", label: "Warm (27–32°C)" },
-    { max: Infinity, color: "#c93b3b", label: "Hot (>32°C)" }
+    { max: 15, color: "#1976d2", label: "Cold (<15°C)" },
+    { max: 27, color: "#4caf50", label: "Comfortable (15–27°C)" },
+    { max: 32, color: "#fbc02d", label: "Warm (27–32°C)" },
+    { max: Infinity, color: "#d32f2f", label: "Hot (>32°C)" }
   ];
   function zoneColorFor(temp) { return (TEMP_ZONES.find(z => temp <= z.max) || TEMP_ZONES[TEMP_ZONES.length - 1]).color; }
 
@@ -2971,7 +2987,7 @@ window.APP_CHARTS = (function () {
     stack(LOSS_SERIES, -1);
 
     const netPts = rows.map(r => `${sx(r.hourDecimal)},${sy(r.qNet)}`).join(" ");
-    svg.appendChild(el("polyline", { points: netPts, class: "chart-line", style: "stroke:#152233;stroke-width:2.5" }));
+    svg.appendChild(el("polyline", { points: netPts, class: "chart-line", style: "stroke:#212121;stroke-width:2.5" }));
 
     if (opts.yLabel) {
       const lbl = textEl(14, mt + plotH / 2, opts.yLabel, "chart-axis-label", "middle");
@@ -2993,7 +3009,7 @@ window.APP_CHARTS = (function () {
 
     const legend = document.createElement("div");
     legend.className = "chart-legend";
-    GAIN_SERIES.concat(LOSS_SERIES).concat([{ label: "Net", color: "#152233" }]).forEach(s => {
+    GAIN_SERIES.concat(LOSS_SERIES).concat([{ label: "Net", color: "#212121" }]).forEach(s => {
       const item = document.createElement("span");
       item.className = "chart-legend-item";
       item.innerHTML = `<i style="background:${s.color}"></i>${s.label}`;
@@ -3682,6 +3698,55 @@ window.UI = window.UI || {};
     { route: "settings", icon: "⚙️", title: "Settings", desc: "Units, assumptions & limitations — what's real vs. a documented model assumption." }
   ];
 
+  // Design Summary KPI grid — same 4 headline numbers already shown on the
+  // Simulation page (thermalComfortScore/solarKwh/totalLossKwh/comfort
+  // range), just surfaced here too so a returning user sees "how's my
+  // current design doing" without navigating away from the hub. Reads
+  // fields already computed by ENGINE.runSimulation and stored via
+  // STORE.recordSimulation — no new calculation.
+  function dashboardSummaryHtml(result) {
+    return `
+      <div class="grid grid-4" style="margin:18px 0;">
+        <div class="metric-card" style="text-align:center;">
+          <div class="metric-label">Thermal Comfort Score</div>
+          <div id="dashGauge"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Solar Gain</div>
+          <div class="metric-value" style="font-size:20px;">${result.daily.solarKwh}</div>
+          <div class="metric-sub">kWh/day</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Heat Loss</div>
+          <div class="metric-value" style="font-size:20px;">${result.daily.totalLossKwh}</div>
+          <div class="metric-sub">kWh/day</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Indoor Temp Range</div>
+          <div class="metric-value" style="font-size:20px;">${result.comfort.minIndoor}–${result.comfort.maxIndoor}°C</div>
+          <div class="metric-sub">Model Prediction</div>
+        </div>
+      </div>`;
+  }
+
+  // Lightweight recent-runs list (spec's "Recent Designs carousel", scoped
+  // down to a plain list — simulationHistory already exists in STORE,
+  // already capped at 20 entries, nothing new computed here either).
+  function recentDesignsHtml(hist) {
+    const recent = hist.slice(0, 3);
+    if (!recent.length) return "";
+    return `
+      <div class="card" style="margin:18px 0;">
+        <h3 style="margin-bottom:10px;">Recent Simulations</h3>
+        <div class="checklist" style="gap:10px;">
+          ${recent.map(h => `<li style="display:flex; justify-content:space-between; gap:10px;">
+            <span>${U.esc(h.designName || "Shelter design")} — ${U.esc(h.locationLabel || "—")}</span>
+            <span><b>${h.thermalComfortScore}/100</b> · ${new Date(h.ts).toLocaleDateString()}</span>
+          </li>`).join("")}
+        </div>
+      </div>`;
+  }
+
   UI.renderDashboard = function (root) {
     const s = STORE.get();
     const hist = s.simulationHistory;
@@ -3689,10 +3754,14 @@ window.UI = window.UI || {};
     root.innerHTML = `
       ${heroHtml(hist.length > 0)}
 
+      ${s.lastSimulationResult ? dashboardSummaryHtml(s.lastSimulationResult) : ""}
+
       ${s.location ? `<div class="card" style="margin:18px 0;">
           ${U.badge(s.climateSource)} <span class="hint">for ${U.esc(s.location.label)}</span>
           ${s.location.solarDataSource ? `<div class="hint" style="margin-top:6px;">Solar potential: <b>${s.location.annualSolarKwhM2Yr} kWh/m²/yr</b> · Avg. temp: <b>${s.location.avgTempCAnnual}°C</b> — NASA POWER (${U.esc(s.location.solarDataSource.period)})</div>` : ""}
         </div>` : ""}
+
+      ${recentDesignsHtml(hist)}
 
       <button class="hamburger-toggle" id="exploreToggle" aria-expanded="false" style="margin-top:${s.location ? "0" : "22px"};">
         <span class="hamburger-icon">☰</span> Explore the Platform
@@ -3708,6 +3777,8 @@ window.UI = window.UI || {};
             </a>`).join("")}
         </div>
       </div>`;
+
+    if (s.lastSimulationResult) CH.scoreGauge(U.qs("#dashGauge", root), s.lastSimulationResult.scores.thermalComfortScore);
 
     U.on("#heroDemoBtn", "click", () => window.APP.runLiveDemo(), root);
     U.on("#heroWorkflowBtn", "click", () => window.APP.navigate("guided"), root);
@@ -3854,13 +3925,13 @@ window.UI = window.UI || {};
       `;
     const hours = Array.from({ length: 25 }, (_, i) => i);
     CH.lineChart(U.qs("#climateChart", box), [
-      { name: "Ambient Temp (°C)", color: "#c93b3b", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
+      { name: "Ambient Temp (°C)", color: "#d32f2f", data: hours.map(h => ({ x: h, y: ENGINE.ambientTempAt(season, h) })) }
     ], { height: 200, yLabel: "°C", xLabel: "Hour of day", tempZones: true });
     const solarDiv = document.createElement("div");
     solarDiv.style.marginTop = "10px";
     U.qs("#climateChart", box).appendChild(solarDiv);
     CH.lineChart(solarDiv, [
-      { name: "Solar Irradiance (W/m²)", color: "#d98a12", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
+      { name: "Solar Irradiance (W/m²)", color: "#ff9800", data: hours.map(h => ({ x: h, y: ENGINE.solarIrradianceAt(season, h) })) }
     ], { height: 180, yLabel: "W/m²", xLabel: "Hour of day" });
 
     if (s.location && s.location.solarDataSource && s.location.solarDataSource.monthlyTemp) {
@@ -3870,7 +3941,7 @@ window.UI = window.UI || {};
         monthlyTemp.map(m => ({ label: m.month, mean: m.tempC, min: m.tempMinC, max: m.tempMaxC })),
         { height: 220, yLabel: "°C" });
       CH.lineChart(U.qs("#monthlySolarChart", box), [
-        { name: "Solar (kWh/m²/day)", color: "#d98a12", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
+        { name: "Solar (kWh/m²/day)", color: "#ff9800", data: monthlyGhi.map((m, i) => ({ x: i, y: m.kwhM2Day })) }
       ], { height: 220, yLabel: "kWh/m²/day", xFormat: (x) => monthlyGhi[Math.round(x)] ? monthlyGhi[Math.round(x)].month : "" });
       const hottest = monthlyTemp.reduce((a, b) => (b.tempC > a.tempC ? b : a));
       const coldest = monthlyTemp.reduce((a, b) => (b.tempC < a.tempC ? b : a));
@@ -3906,7 +3977,7 @@ window.UI = window.UI || {};
           <button class="btn btn-accent" id="loadRealBtn">🌐 Load Real Weather (Open-Meteo)</button>
           <span id="fetchStatus" class="hint"></span>
         </div>
-        <div id="locationMap" style="height:260px; border-radius:8px; margin-top:12px; z-index:0;"></div>
+        <div id="locationMap" style="height:260px; border-radius:4px; margin-top:12px; z-index:0;"></div>
         <p class="hint" style="margin-top:6px;">Click a pin to load that location's live weather. Map tiles © <a href="https://www.esri.com" target="_blank" rel="noopener" style="color:var(--accent);">Esri</a>.</p>
         <p class="hint" style="margin-top:10px;">Live weather from
         <a href="https://open-meteo.com" target="_blank" rel="noopener" style="color:var(--accent);">Open-Meteo</a>
@@ -4018,7 +4089,7 @@ window.UI = window.UI || {};
           if (btn) btn.addEventListener("click", () => { map.closePopup(); loadLocationById(l.id); });
         });
       });
-      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#1f8a9e", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
+      if (loc) window.L.circleMarker([loc.latitude, loc.longitude], { radius: 8, color: "#1976d2", fillOpacity: 0.6 }).addTo(map).bindTooltip("Current: " + loc.label);
     }
 
     wireComfortCard(root);
@@ -4150,7 +4221,7 @@ window.UI = window.UI || {};
     const bearing = bearingOf(design);
     let shapeSvg;
     if (isRound) {
-      shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
+      shapeSvg = `<circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
     } else if (isLShape) {
       const lApx = (design.lengthA || 4) * scale, wApx = (design.widthA || 4) * scale, wBpx = Math.min((design.widthB || 3) * scale, lApx);
       const ox = cx - w / 2, oy = cy - h / 2;
@@ -4158,9 +4229,9 @@ window.UI = window.UI || {};
         [ox, oy + h], [ox + lApx, oy + h], [ox + lApx, oy + h - wApx],
         [ox + wBpx, oy + h - wApx], [ox + wBpx, oy], [ox, oy]
       ];
-      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
+      shapeSvg = `<polygon points="${pts.map(p => p.join(",")).join(" ")}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
     } else {
-      shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#dfeef2" stroke="#1f8a9e" stroke-width="2"/>`;
+      shapeSvg = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>`;
     }
 
     // Opening marks (doors, windows) on their actual configured face
@@ -4190,9 +4261,9 @@ window.UI = window.UI || {};
       const face = win.orientation || "FRONT";
       winCountByFace[face] = (winCountByFace[face] || 0) + (win.count || 0);
     });
-    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#2fb8cf")).join("");
+    const winMarks = Object.entries(winCountByFace).map(([face, count]) => edgeMarks(face, count, "#2196f3")).join("");
     const door = design.doors && design.doors[0];
-    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#8a5a10") : "";
+    const doorMarks = door ? edgeMarks(door.orientation || "FRONT", door.count, "#e65100") : "";
 
     const labelOffset = 16;
     const edges = isRound ? [] : [
@@ -4431,7 +4502,7 @@ window.UI = window.UI || {};
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>3D Preview <span class="tag tag-demo">illustrative</span></h3>
-            <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:8px; cursor:grab;"></canvas>
+            <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:4px; cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
             <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and each window group below are shown on their own configured face — each window group's face also drives its own share of the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
           </div>
@@ -4501,7 +4572,7 @@ window.UI = window.UI || {};
         doorCount: (design.doors || []).reduce((s, dr) => s + (dr.count || 0), 0),
         doorFace: (design.doors && design.doors[0] && design.doors[0].orientation) || "FRONT",
         windowGroups: (design.windows || []).map(w => ({ count: w.count || 0, orientation: w.orientation || "FRONT" })),
-        wallColor: WALL_COLOR_BY_MATERIAL[wallMatId] || "#dfeef2",
+        wallColor: WALL_COLOR_BY_MATERIAL[wallMatId] || "#e3f2fd",
         sunAngle: ENGINE.frontAzimuthOf(design)
       });
     }
@@ -5404,8 +5475,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
     if (result) {
       const dt = s.simConfig.timeStepMinutes / 60;
       CH.lineChart(U.qs("#tempChart", root), [
-        { name: "Indoor Temp", color: "#1f8a9e", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tIndoor })) },
-        { name: "Ambient Temp", color: "#c93b3b", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tAmb })) }
+        { name: "Indoor Temp", color: "#1976d2", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tIndoor })) },
+        { name: "Ambient Temp", color: "#d32f2f", data: result.series.map(pt => ({ x: pt.stepIndex * dt, y: pt.tAmb })) }
       ], { height: 260, yLabel: "°C", xLabel: "Hours from simulation start", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max }, tempZones: true });
       const stepsPerDay = Math.round(24 * 60 / s.simConfig.timeStepMinutes);
       CH.hourlyHeatFlowChart(U.qs("#hourlyHeatFlowDiv", root), result.series.slice(0, stepsPerDay), { height: 280, yLabel: "W", xLabel: "Hour of day" });
@@ -5754,8 +5825,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         </div>`;
       const dt = s.simConfig.timeStepMinutes / 60;
       CH.lineChart(U.qs("#whatifChart", wrap), [
-        { name: "Before", color: "#8b98a6", data: beforeRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) },
-        { name: "After", color: "#1f8a9e", data: afterRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) }
+        { name: "Before", color: "#9e9e9e", data: beforeRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) },
+        { name: "After", color: "#1976d2", data: afterRes.series.map(pt => ({ x: pt.stepIndex*dt, y: pt.tIndoor })) }
       ], { height: 240, yLabel: "°C", xLabel: "Hours", comfortBand: { min: s.design.comfort.min, max: s.design.comfort.max }, tempZones: true });
     }, root);
   };
@@ -5806,6 +5877,64 @@ window.UI = window.UI || {};
     { hour: 20, ambient: -9, solar: 0, wind: 1.8, rh: 38, measured: 1 }
   ];
 
+  // Categorized honest-status summary — the same real facts already
+  // written out in Settings' "Assumptions & Limitations" card (ui-3.js,
+  // UI.renderSettings), just regrouped under the model/data/materials
+  // headings a reviewer would look for. No claim here that isn't already
+  // stated elsewhere in the app — deliberately does NOT include invented
+  // accuracy figures (e.g. a specific +/-X C error band) since this
+  // prototype's accuracy against real shelters has not been measured yet.
+  function modelAssumptionsHtml() {
+    return `
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Model Assumptions &amp; Reliability</h3>
+        <div class="callout-error card" style="margin-bottom:14px;">
+          <h3>Validation Status: Not Field-Validated</h3>
+          <p style="margin:0;">Expected model accuracy has not been formally quantified against field measurements —
+          no instrumented-shelter dataset exists yet. Treat results as model predictions for design comparison, not a
+          substitute for engineering sign-off before construction.</p>
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <h3>Physics Model</h3>
+            <ul class="assumption-list">
+              <li>✓ Transient (hourly RC, 2-node) model, not steady-state.</li>
+              <li>✓ Accounts for solar gain, thermal mass, ground-coupled floor loss, and ventilation.</li>
+              <li>✗ Not modeled: full 3D heat conduction, air stratification, moisture transport (latent heat is reported, not simulated as indoor humidity).</li>
+              <li>✗ Sky longwave radiation is folded into the sol-air simplification, not a separate term.</li>
+              <li>⚠ Ventilation (ACH) uses a documented per-person fresh-air allowance (${CFG.PHYSICS.OCCUPANT_FRESH_AIR_LPS} L/s/person) — an order-of-magnitude guideline, not a ventilation-code compliance calculation.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Data Sources</h3>
+            <ul class="assumption-list">
+              <li>✓ Open-Meteo: live 7-day hourly forecast average.</li>
+              <li>✓ NASA POWER: real 20-year solar/temperature climatology.</li>
+              <li>✓ Open-Meteo Elevation API: real elevation lookup.</li>
+              <li>⚠ Weather is a forecast average, not a real-time or historical field measurement.</li>
+              <li>⚠ A network hiccup falls back to cached data — always clearly labelled as cached or stale, never silently shown as live.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Material Properties</h3>
+            <ul class="assumption-list">
+              <li>✓ Sourced from engineering handbook reference values.</li>
+              <li>⚠ Costs are a materials + installation + waste-factor planning estimate — not a CPWD/state PWD Schedule of Rates or vendor quotation.</li>
+              <li>⚠ Thermal properties assume uniform, homogeneous materials.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Comfort &amp; Scoring</h3>
+            <ul class="assumption-list">
+              <li>⚠ Thermal Comfort Score is a custom, project-defined weighted index — not PMV/PPD or any recognised thermal-comfort standard.</li>
+              <li>⚠ Comfort-zone colour bands (18–27°C etc.) are a simplified temperature-only proxy; real comfort also depends on humidity, air speed and clothing.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:10px;">Full field-validated assumptions list: see Settings → Assumptions &amp; Limitations. The tool below compares the model against your own measured readings when you have them.</p>
+      </div>`;
+  }
+
   UI.renderValidation = function (root) {
     const s = STORE.get();
 
@@ -5815,6 +5944,8 @@ window.UI = window.UI || {};
       instrumented shelter) to compare against the model's prediction. No field measurements exist for this prototype —
       the rows below are editable placeholders you can overwrite. Requires field validation before use in a real
       engineering decision.</p>
+
+      ${modelAssumptionsHtml()}
 
       <div class="card">
         <h3>Measured Data Points</h3>
@@ -6507,7 +6638,7 @@ window.APP = (function () {
     if (!t) {
       t = document.createElement("div");
       t.id = "appToast";
-      t.style.cssText = "position:fixed;bottom:20px;right:24px;background:#152233;color:#fff;padding:10px 16px;border-radius:8px;font-size:12.5px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s;display:flex;align-items:center;gap:12px;max-width:360px;";
+      t.style.cssText = "position:fixed;bottom:20px;right:24px;background:#212121;color:#fff;padding:10px 16px;border-radius:4px;font-size:12.5px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s;display:flex;align-items:center;gap:12px;max-width:360px;";
       document.body.appendChild(t);
     }
     t.innerHTML = "";
