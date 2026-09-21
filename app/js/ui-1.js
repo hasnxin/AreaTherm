@@ -262,6 +262,7 @@ window.UI = window.UI || {};
       </div>
       <p class="hint" id="monthlyPeaks" style="margin-top:8px;"></p>
       ` : ""}
+      <p style="margin-top:16px;"><a href="#/climate-card" style="color:var(--accent);font-weight:600;">📄 Download Climate Profile Card →</a></p>
       `;
     const hours = Array.from({ length: 25 }, (_, i) => i);
     CH.lineChart(U.qs("#climateChart", box), [

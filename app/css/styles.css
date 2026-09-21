@@ -81,7 +81,8 @@ button{font-family:inherit; cursor:pointer;}
 .brand-name{font-weight:700; font-size:15px; color:#fff;}
 .brand-sub{font-size:10.5px; color:#8ea9bc; letter-spacing:.03em;}
 .nav{display:flex; flex-direction:column; padding:14px 10px; gap:2px; flex:1; overflow-y:auto;}
-.nav a{padding:9px 12px; border-radius:6px; font-size:13px; color:#b9cad8; transition:background .12s;}
+.nav a{display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:6px; font-size:13px; color:#b9cad8; transition:background .12s;}
+.nav-icon{font-size:14px; line-height:1; flex-shrink:0; width:16px; text-align:center;}
 .nav a:hover{background:rgba(255,255,255,.06); color:#fff;}
 .nav a.active{background:var(--accent); color:#fff; font-weight:600;}
 .nav a.nav-advanced-only{display:none;}
@@ -94,7 +95,7 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 
 /* Main content */
 .content{margin-left:230px; min-width:0; display:flex; flex-direction:column; min-height:100vh; transition:margin-left .2s ease;}
-.topbar{display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:var(--panel); border-bottom:1px solid var(--border); gap:12px;}
+.topbar{display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:var(--panel); border-bottom:1px solid var(--border); gap:12px; position:sticky; top:0; z-index:20;}
 .topbar-left{display:flex; align-items:center; gap:10px; min-width:0;}
 /* Always visible (not just <=860px) — on desktop it collapses the sidebar
    in place for more content width, via .app-shell.sidebar-collapsed below;

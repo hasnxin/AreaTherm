@@ -108,7 +108,8 @@ button{font-family:inherit; cursor:pointer;}
 .brand-name{font-weight:700; font-size:15px; color:#fff;}
 .brand-sub{font-size:10.5px; color:#8ea9bc; letter-spacing:.03em;}
 .nav{display:flex; flex-direction:column; padding:14px 10px; gap:2px; flex:1; overflow-y:auto;}
-.nav a{padding:9px 12px; border-radius:6px; font-size:13px; color:#b9cad8; transition:background .12s;}
+.nav a{display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:6px; font-size:13px; color:#b9cad8; transition:background .12s;}
+.nav-icon{font-size:14px; line-height:1; flex-shrink:0; width:16px; text-align:center;}
 .nav a:hover{background:rgba(255,255,255,.06); color:#fff;}
 .nav a.active{background:var(--accent); color:#fff; font-weight:600;}
 .nav a.nav-advanced-only{display:none;}
@@ -121,7 +122,7 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 
 /* Main content */
 .content{margin-left:230px; min-width:0; display:flex; flex-direction:column; min-height:100vh; transition:margin-left .2s ease;}
-.topbar{display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:var(--panel); border-bottom:1px solid var(--border); gap:12px;}
+.topbar{display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:var(--panel); border-bottom:1px solid var(--border); gap:12px; position:sticky; top:0; z-index:20;}
 .topbar-left{display:flex; align-items:center; gap:10px; min-width:0;}
 /* Always visible (not just <=860px) — on desktop it collapses the sidebar
    in place for more content width, via .app-shell.sidebar-collapsed below;
@@ -369,7 +370,8 @@ td.num{font-family:var(--mono); text-align:right;}
 
 </style>
 
-<div class="app-shell">
+
+  <div class="app-shell">
     <aside class="sidebar" id="sidebar">
       <div class="brand">
         <div class="brand-mark">AT</div>
@@ -380,18 +382,18 @@ td.num{font-family:var(--mono); text-align:right;}
         <button id="sidebarClose" class="sidebar-close" aria-label="Close menu">✕</button>
       </div>
       <nav class="nav" id="mainNav">
-        <a href="#/dashboard" data-route="dashboard">Dashboard</a>
-        <a href="#/guided" data-route="guided">Guided Setup</a>
-        <a href="#/location" data-route="location" class="nav-advanced-only">Location &amp; Climate</a>
-        <a href="#/designer" data-route="designer" class="nav-advanced-only">Shelter Designer</a>
-        <a href="#/materials" data-route="materials">Materials</a>
-        <a href="#/simulation" data-route="simulation" class="nav-advanced-only">Thermal Simulation</a>
-        <a href="#/optimization" data-route="optimization" class="nav-advanced-only">Optimization</a>
-        <a href="#/whatif" data-route="whatif">What-If Analysis</a>
-        <a href="#/validation" data-route="validation" class="nav-advanced-only">Validation</a>
-        <a href="#/reports" data-route="reports">Reports</a>
-        <a href="#/evaluator" data-route="evaluator" class="nav-advanced-only">Evaluator Summary</a>
-        <a href="#/settings" data-route="settings">Settings</a>
+        <a href="#/dashboard" data-route="dashboard"><span class="nav-icon">🏠</span>Dashboard</a>
+        <a href="#/guided" data-route="guided"><span class="nav-icon">🧭</span>Guided Setup</a>
+        <a href="#/location" data-route="location" class="nav-advanced-only"><span class="nav-icon">🌐</span>Location &amp; Climate</a>
+        <a href="#/designer" data-route="designer" class="nav-advanced-only"><span class="nav-icon">📐</span>Shelter Designer</a>
+        <a href="#/materials" data-route="materials"><span class="nav-icon">🧱</span>Materials</a>
+        <a href="#/simulation" data-route="simulation" class="nav-advanced-only"><span class="nav-icon">🌡️</span>Thermal Simulation</a>
+        <a href="#/optimization" data-route="optimization" class="nav-advanced-only"><span class="nav-icon">📊</span>Optimization</a>
+        <a href="#/whatif" data-route="whatif"><span class="nav-icon">🔀</span>What-If Analysis</a>
+        <a href="#/validation" data-route="validation" class="nav-advanced-only"><span class="nav-icon">✅</span>Validation</a>
+        <a href="#/reports" data-route="reports"><span class="nav-icon">📄</span>Reports</a>
+        <a href="#/evaluator" data-route="evaluator" class="nav-advanced-only"><span class="nav-icon">🗒️</span>Evaluator Summary</a>
+        <a href="#/settings" data-route="settings"><span class="nav-icon">⚙️</span>Settings</a>
       </nav>
       <div class="sidebar-footer">
         <div class="mode-toggle">
@@ -3177,7 +3179,49 @@ window.APP_CHARTS = (function () {
     }
   }
 
-  return { lineChart, barChart, scatterChart, scoreGauge, hourlyHeatFlowChart, stackedHourlyChart, monthlyBarChart, stackedHeatBalanceChart };
+  // Rasterizes a chart's <svg> to a downloaded PNG. A standalone/rasterized
+  // SVG document can't see this page's external stylesheet, so every
+  // element's CURRENT computed style (fill/stroke/font/etc., however it
+  // actually got there — a CSS class, an inline style, or both) is copied
+  // onto the clone first, walking both trees in lockstep, so the exported
+  // image matches what's on screen without depending on styles.css.
+  function downloadChartPng(container, filename) {
+    const original = container && (container.querySelector("svg.chart-svg") || container.querySelector("svg"));
+    if (!original) return;
+    const clone = original.cloneNode(true);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+    const PROPS = ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-linecap", "font-size", "font-family", "opacity", "text-anchor"];
+    const origEls = original.querySelectorAll("*"), cloneEls = clone.querySelectorAll("*");
+    origEls.forEach((el, i) => {
+      const cs = getComputedStyle(el), target = cloneEls[i];
+      if (!target) return;
+      PROPS.forEach(p => { const v = cs.getPropertyValue(p); if (v) target.style.setProperty(p, v); });
+    });
+
+    const bg = (getComputedStyle(document.body).getPropertyValue("--panel") || "#ffffff").trim() || "#ffffff";
+    const svgStr = new XMLSerializer().serializeToString(clone);
+    const svgUrl = URL.createObjectURL(new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2; // export at ~2x for a crisper PNG than the on-screen SVG
+      const w = (original.viewBox && original.viewBox.baseVal && original.viewBox.baseVal.width) || original.clientWidth || 640;
+      const h = (original.viewBox && original.viewBox.baseVal && original.viewBox.baseVal.height) || original.clientHeight || 300;
+      const canvas = document.createElement("canvas");
+      canvas.width = w * scale; canvas.height = h * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(svgUrl);
+      canvas.toBlob(blob => { if (blob && window.U) window.U.downloadFile(filename, blob, "image/png"); }, "image/png");
+    };
+    img.onerror = () => URL.revokeObjectURL(svgUrl);
+    img.src = svgUrl;
+  }
+
+  return { lineChart, barChart, scatterChart, scoreGauge, hourlyHeatFlowChart, stackedHourlyChart, monthlyBarChart, stackedHeatBalanceChart, downloadChartPng };
 })();
 
 </script>
@@ -3922,6 +3966,7 @@ window.UI = window.UI || {};
       </div>
       <p class="hint" id="monthlyPeaks" style="margin-top:8px;"></p>
       ` : ""}
+      <p style="margin-top:16px;"><a href="#/climate-card" style="color:var(--accent);font-weight:600;">📄 Download Climate Profile Card →</a></p>
       `;
     const hours = Array.from({ length: 25 }, (_, i) => i);
     CH.lineChart(U.qs("#climateChart", box), [
@@ -5368,6 +5413,23 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
   }
 
   // ---------------------------------------------------------------------
+  // A single rule-based next-step suggestion, in the same spirit as
+  // ui-1.js's buildDesignImplications — reads only fields runSimulation
+  // already computed, no new calculation. Picks the one factor most
+  // likely holding the score back rather than listing everything at once.
+  function simRecommendation(result, design) {
+    if (result.scores.thermalComfortScore >= 80) {
+      return "This design already performs well across the metrics below — no single change stands out as a priority.";
+    }
+    const tooHot = result.comfort.maxIndoor > design.comfort.max && result.comfort.dayComfortPct < 60;
+    const tooCold = result.comfort.minIndoor < design.comfort.min && result.comfort.nightComfortPct < 60;
+    if (tooHot) return "Daytime indoor temperature runs above the comfort band — reduce window area or add shading/ventilation to cut excess solar gain.";
+    if (tooCold) return "Night-time indoor temperature drops below the comfort band — increase wall/roof insulation or add thermal mass to hold daytime heat longer.";
+    if (result.scores.heatRetentionPct < 60) return "Heat retention is low — increase insulation thickness on the wall and roof.";
+    if (result.scores.solarUtilizationPct < 40) return "Solar utilization is low — consider a more south-facing orientation or more window area on the sun-facing wall.";
+    return "Review wall/roof insulation and window orientation for the largest gains — see Optimization for a systematic comparison.";
+  }
+
   UI.renderSimulation = function (root) {
     const s = STORE.get();
     const season = STORE.currentSeason();
@@ -5404,7 +5466,10 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       </div>
 
       <div class="card" style="margin-bottom:16px;">
-        <h3>Indoor vs Ambient Temperature vs Comfort Range</h3>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <h3>Indoor vs Ambient Temperature vs Comfort Range</h3>
+          <button class="btn btn-sm" id="downloadTempChartBtn">⬇ Download as PNG</button>
+        </div>
         <div id="tempChart"></div>
       </div>
 
@@ -5468,6 +5533,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
             <li>Heat retention: <b>${result.scores.heatRetentionPct}%</b></li>
           </ul>
         </div>
+        <p class="hint" style="margin-top:10px;"><b>Recommendation:</b> ${simRecommendation(result, s.design)}</p>
       </div>
       ` : `<div class="card"><p class="subtitle">Run the simulation to see predicted indoor temperature, solar gain, heat losses, and comfort duration.</p></div>`}
     `;
@@ -5484,6 +5550,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       CH.stackedHeatBalanceChart(U.qs("#heatFlowDiv", root), result.daily);
       CH.scoreGauge(U.qs("#simGauge", root), result.scores.thermalComfortScore);
       wireExplainButtons(root, result, s.design, season);
+      U.on("#downloadTempChartBtn", "click", () => CH.downloadChartPng(U.qs("#tempChart", root), "areatherm_temperature_chart.png"), root);
     }
 
     U.on("#runSimBtn", "click", () => {

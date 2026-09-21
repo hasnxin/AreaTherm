@@ -570,5 +570,47 @@ window.APP_CHARTS = (function () {
     }
   }
 
-  return { lineChart, barChart, scatterChart, scoreGauge, hourlyHeatFlowChart, stackedHourlyChart, monthlyBarChart, stackedHeatBalanceChart };
+  // Rasterizes a chart's <svg> to a downloaded PNG. A standalone/rasterized
+  // SVG document can't see this page's external stylesheet, so every
+  // element's CURRENT computed style (fill/stroke/font/etc., however it
+  // actually got there — a CSS class, an inline style, or both) is copied
+  // onto the clone first, walking both trees in lockstep, so the exported
+  // image matches what's on screen without depending on styles.css.
+  function downloadChartPng(container, filename) {
+    const original = container && (container.querySelector("svg.chart-svg") || container.querySelector("svg"));
+    if (!original) return;
+    const clone = original.cloneNode(true);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+    const PROPS = ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-linecap", "font-size", "font-family", "opacity", "text-anchor"];
+    const origEls = original.querySelectorAll("*"), cloneEls = clone.querySelectorAll("*");
+    origEls.forEach((el, i) => {
+      const cs = getComputedStyle(el), target = cloneEls[i];
+      if (!target) return;
+      PROPS.forEach(p => { const v = cs.getPropertyValue(p); if (v) target.style.setProperty(p, v); });
+    });
+
+    const bg = (getComputedStyle(document.body).getPropertyValue("--panel") || "#ffffff").trim() || "#ffffff";
+    const svgStr = new XMLSerializer().serializeToString(clone);
+    const svgUrl = URL.createObjectURL(new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2; // export at ~2x for a crisper PNG than the on-screen SVG
+      const w = (original.viewBox && original.viewBox.baseVal && original.viewBox.baseVal.width) || original.clientWidth || 640;
+      const h = (original.viewBox && original.viewBox.baseVal && original.viewBox.baseVal.height) || original.clientHeight || 300;
+      const canvas = document.createElement("canvas");
+      canvas.width = w * scale; canvas.height = h * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(svgUrl);
+      canvas.toBlob(blob => { if (blob && window.U) window.U.downloadFile(filename, blob, "image/png"); }, "image/png");
+    };
+    img.onerror = () => URL.revokeObjectURL(svgUrl);
+    img.src = svgUrl;
+  }
+
+  return { lineChart, barChart, scatterChart, scoreGauge, hourlyHeatFlowChart, stackedHourlyChart, monthlyBarChart, stackedHeatBalanceChart, downloadChartPng };
 })();

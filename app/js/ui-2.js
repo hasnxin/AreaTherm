@@ -169,6 +169,23 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
   }
 
   // ---------------------------------------------------------------------
+  // A single rule-based next-step suggestion, in the same spirit as
+  // ui-1.js's buildDesignImplications — reads only fields runSimulation
+  // already computed, no new calculation. Picks the one factor most
+  // likely holding the score back rather than listing everything at once.
+  function simRecommendation(result, design) {
+    if (result.scores.thermalComfortScore >= 80) {
+      return "This design already performs well across the metrics below — no single change stands out as a priority.";
+    }
+    const tooHot = result.comfort.maxIndoor > design.comfort.max && result.comfort.dayComfortPct < 60;
+    const tooCold = result.comfort.minIndoor < design.comfort.min && result.comfort.nightComfortPct < 60;
+    if (tooHot) return "Daytime indoor temperature runs above the comfort band — reduce window area or add shading/ventilation to cut excess solar gain.";
+    if (tooCold) return "Night-time indoor temperature drops below the comfort band — increase wall/roof insulation or add thermal mass to hold daytime heat longer.";
+    if (result.scores.heatRetentionPct < 60) return "Heat retention is low — increase insulation thickness on the wall and roof.";
+    if (result.scores.solarUtilizationPct < 40) return "Solar utilization is low — consider a more south-facing orientation or more window area on the sun-facing wall.";
+    return "Review wall/roof insulation and window orientation for the largest gains — see Optimization for a systematic comparison.";
+  }
+
   UI.renderSimulation = function (root) {
     const s = STORE.get();
     const season = STORE.currentSeason();
@@ -205,7 +222,10 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       </div>
 
       <div class="card" style="margin-bottom:16px;">
-        <h3>Indoor vs Ambient Temperature vs Comfort Range</h3>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <h3>Indoor vs Ambient Temperature vs Comfort Range</h3>
+          <button class="btn btn-sm" id="downloadTempChartBtn">⬇ Download as PNG</button>
+        </div>
         <div id="tempChart"></div>
       </div>
 
@@ -269,6 +289,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
             <li>Heat retention: <b>${result.scores.heatRetentionPct}%</b></li>
           </ul>
         </div>
+        <p class="hint" style="margin-top:10px;"><b>Recommendation:</b> ${simRecommendation(result, s.design)}</p>
       </div>
       ` : `<div class="card"><p class="subtitle">Run the simulation to see predicted indoor temperature, solar gain, heat losses, and comfort duration.</p></div>`}
     `;
@@ -285,6 +306,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       CH.stackedHeatBalanceChart(U.qs("#heatFlowDiv", root), result.daily);
       CH.scoreGauge(U.qs("#simGauge", root), result.scores.thermalComfortScore);
       wireExplainButtons(root, result, s.design, season);
+      U.on("#downloadTempChartBtn", "click", () => CH.downloadChartPng(U.qs("#tempChart", root), "areatherm_temperature_chart.png"), root);
     }
 
     U.on("#runSimBtn", "click", () => {
