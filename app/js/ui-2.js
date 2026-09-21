@@ -2,7 +2,7 @@
 window.UI = window.UI || {};
 
 (function () {
-  const DATA = window.APP_DATA, ENGINE = window.APP_ENGINE, STORE = window.APP_STORE, CH = window.APP_CHARTS;
+  const DATA = window.APP_DATA, ENGINE = window.APP_ENGINE, STORE = window.APP_STORE, CH = window.APP_CHARTS, CFG = window.APP_CONFIG;
 
   function matName(id) { const m = DATA.materialById(id); return m ? m.name : id || "—"; }
 
@@ -130,11 +130,13 @@ Q_vent (this hour) = ${coldest.qVent} W</pre>
     if (!design.thermalMass) return `<p>No thermal mass configured in this design.</p>`;
     const peakSun = result.series.reduce((a, b) => a.gHoriz > b.gHoriz ? a : b);
     const mat = DATA.materialById(design.thermalMass.materialId);
+    const exposure = design.thermalMass.exposure || "FLOOR";
+    const hMass = (CFG.PHYSICS.THERMAL_MASS_EXPOSURE_H_VALUES && CFG.PHYSICS.THERMAL_MASS_EXPOSURE_H_VALUES[exposure]) || CFG.PHYSICS.MASS_FILM_COEFF_W_M2K;
     return `<pre>Q_exchange = h_mass × A_mass × (T_indoor − T_mass)
 C_mass × dT_mass/dt = Q_exchange + f_solar_to_mass × Q_solar,window
 
 Material: ${mat.name},  mass = ${design.thermalMass.massKg} kg,  Cp = ${mat.cp} J/kgK
-h_mass = 8 W/m²K,  A_mass = ${design.thermalMass.surfaceAreaM2} m²
+h_mass = ${hMass} W/m²K (${exposure.toLowerCase()} exposure),  A_mass = ${design.thermalMass.surfaceAreaM2} m²
 
 At hour ${peakSun.hourDecimal.toFixed(1)} (peak solar): T_indoor=${peakSun.tIndoor}°C, T_mass=${peakSun.tMass}°C
 Q_exchange ≈ ${peakSun.qMassExchange} W  (positive = mass absorbing heat from air)</pre>`;

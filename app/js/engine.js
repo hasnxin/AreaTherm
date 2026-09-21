@@ -14,18 +14,51 @@ window.APP_ENGINE = (function () {
 
   // Orientation offset-from-south (deg), used for the piecewise factor table.
   const ORIENT_OFFSET = { SOUTH: 0, SE: 45, EAST: 90, NE: 135, NORTH: 180, NW: 135, WEST: 90, SW: 45 };
-  const FACTOR_TABLE = [ [0, 1.00], [45, 0.85], [90, 0.55], [135, 0.30], [180, 0.15] ];
+  // High-latitude table (~lat >= 34°N) — the app's original calibration,
+  // unchanged, for its Himalayan/Ladakh reference locations where winter
+  // solar altitude stays low (a south wall dominates strongly).
+  const FACTOR_TABLE_HIGH_LAT = [ [0, 1.00], [45, 0.85], [90, 0.55], [135, 0.30], [180, 0.15] ];
+  // Low-latitude table (~lat <= 20°N) — documented heuristic, not a
+  // first-principles solar-position derivation. At lower latitudes the
+  // solar altitude at solar noon is meaningfully higher even in winter
+  // (altitude ≈ 90° − |latitude − declination|; e.g. ≈45° at 21°N vs
+  // ≈32° at 34°N on the winter solstice), which is well established to
+  // shrink a south wall's advantage over east/west/north — the same
+  // general trend the high-latitude table encodes, just less pronounced.
+  // Kept internally consistent with the table above (SOUTH pinned to the
+  // same 1.00 reference) rather than an independently-scaled table, to
+  // avoid a discontinuity in the model's overall solar-gain scale when
+  // blending between the two below.
+  const FACTOR_TABLE_LOW_LAT = [ [0, 1.00], [45, 0.90], [90, 0.75], [135, 0.55], [180, 0.35] ];
 
-  function orientationFactorFromAngle(angle0to180) {
+  // Blends smoothly between the two tables by latitude instead of a hard
+  // climate-zone cutoff — a hard cutoff would give two sites a few km
+  // apart, straddling an arbitrary boundary, a discontinuous jump in
+  // predicted solar gain. Latitude is optional (defaults to the original,
+  // unchanged high-latitude table) so every call site that doesn't have a
+  // location context yet — or a design/result saved before this existed —
+  // behaves exactly as before.
+  function orientationFactorTableForLatitude(latitude) {
+    if (!Number.isFinite(latitude)) return FACTOR_TABLE_HIGH_LAT;
+    const latAbs = Math.abs(latitude);
+    const t = clamp((latAbs - 20) / (34 - 20), 0, 1);
+    return FACTOR_TABLE_HIGH_LAT.map((pt, i) => {
+      const lowPt = FACTOR_TABLE_LOW_LAT[i];
+      return [pt[0], lowPt[1] + t * (pt[1] - lowPt[1])];
+    });
+  }
+
+  function orientationFactorFromAngle(angle0to180, latitude) {
+    const table = orientationFactorTableForLatitude(latitude);
     const a = Math.max(0, Math.min(180, angle0to180));
-    for (let i = 0; i < FACTOR_TABLE.length - 1; i++) {
-      const [a0, f0] = FACTOR_TABLE[i], [a1, f1] = FACTOR_TABLE[i + 1];
+    for (let i = 0; i < table.length - 1; i++) {
+      const [a0, f0] = table[i], [a1, f1] = table[i + 1];
       if (a >= a0 && a <= a1) {
         const t = (a - a0) / (a1 - a0);
         return f0 + t * (f1 - f0);
       }
     }
-    return 0.15;
+    return table[table.length - 1][1];
   }
 
   function frontAzimuthOf(design) {
@@ -33,10 +66,10 @@ window.APP_ENGINE = (function () {
     return ORIENT_OFFSET[design.orientation] ?? 0;
   }
 
-  function faceFactor(frontAzimuth, relativeOffsetDeg) {
+  function faceFactor(frontAzimuth, relativeOffsetDeg, latitude) {
     const abs = ((frontAzimuth + relativeOffsetDeg) % 360 + 360) % 360;
     const angle = abs <= 180 ? abs : 360 - abs;
-    return orientationFactorFromAngle(angle);
+    return orientationFactorFromAngle(angle, latitude);
   }
 
   // ---- Input validation ---------------------------------------------------
@@ -85,7 +118,13 @@ window.APP_ENGINE = (function () {
   }
 
   // ---- Geometry --------------------------------------------------------
-  function computeGeometry(design) {
+  // latitude (optional): threaded into each face's orientation factor so
+  // solar-gain-by-orientation reflects this specific site's latitude (see
+  // orientationFactorTableForLatitude above) rather than one fixed table
+  // for every location. Omitted by callers that only need areas/faces for
+  // display (2D/3D preview, geometry validation) — harmless there since
+  // `.factor` isn't read in those contexts.
+  function computeGeometry(design, latitude) {
     let L = design.length || 6, W = design.width || 4, H = design.height || 3;
     let floorArea, roofArea, perimeter;
     const isRound = design.shape === "CIRCULAR" || design.shape === "DOME" || design.shape === "SEMI_CIRCULAR";
@@ -121,16 +160,16 @@ window.APP_ENGINE = (function () {
     let faces;
     if (isRound) {
       const wallArea = perimeter * H;
-      faces = [{ name: "CURVED_WALL", areaM2: wallArea, factor: faceFactor(frontAzimuth, 0) }];
+      faces = [{ name: "CURVED_WALL", areaM2: wallArea, factor: faceFactor(frontAzimuth, 0, latitude) }];
     } else if (isLShape) {
       const wallArea = perimeter * H;
-      faces = [{ name: "L_WALL", areaM2: wallArea, factor: faceFactor(frontAzimuth, 0) }];
+      faces = [{ name: "L_WALL", areaM2: wallArea, factor: faceFactor(frontAzimuth, 0, latitude) }];
     } else {
       faces = [
-        { name: "FRONT", areaM2: L * H, factor: faceFactor(frontAzimuth, 0) },
-        { name: "BACK", areaM2: L * H, factor: faceFactor(frontAzimuth, 180) },
-        { name: "LEFT", areaM2: W * H, factor: faceFactor(frontAzimuth, -90) },
-        { name: "RIGHT", areaM2: W * H, factor: faceFactor(frontAzimuth, 90) }
+        { name: "FRONT", areaM2: L * H, factor: faceFactor(frontAzimuth, 0, latitude) },
+        { name: "BACK", areaM2: L * H, factor: faceFactor(frontAzimuth, 180, latitude) },
+        { name: "LEFT", areaM2: W * H, factor: faceFactor(frontAzimuth, -90, latitude) },
+        { name: "RIGHT", areaM2: W * H, factor: faceFactor(frontAzimuth, 90, latitude) }
       ];
     }
     const wallArea = faces.reduce((s, f) => s + f.areaM2, 0);
@@ -251,12 +290,53 @@ window.APP_ENGINE = (function () {
     return Math.max(0, shape * peakWm2);
   }
 
+  function windSpeedAt(season, hourDecimal) {
+    if (season.hourly) return Math.max(0, interpHourly(season.hourly, "windMs", hourDecimal));
+    return Math.max(0, season.windMs || 0);
+  }
+
+  // ASHRAE-correlation exterior film coefficient (see config.js
+  // WIND_FILM_COEFF_*) — used only for the hourly sol-air temperature term
+  // below, not for the static Rso in wallUValue/roofUValue (see comment
+  // there): this one is meant to track the actual current hour's wind.
+  function windAdjustedFilmCoefficient(windMs) {
+    return CFG.PHYSICS.WIND_FILM_COEFF_BASE_W_M2K + CFG.PHYSICS.WIND_FILM_COEFF_PER_MS * Math.max(0, windMs || 0);
+  }
+
+  // Ground temperature at typical footing depth (~1-2m) tracks a site's
+  // longer-term average far more than the current forecast window's air
+  // temperature — using the current week's mean is a poor proxy for it,
+  // especially in an extreme season (a winter run would otherwise see the
+  // floor "losing heat" to an implausibly cold ground, or the reverse in
+  // summer). Prefers real per-location NASA POWER climatology when it's
+  // loaded (see nasa-power.js + store.js enrichLocation) — works for ANY
+  // location (predefined or a custom map pin), not a fixed city list. A
+  // one-month lag is a standard, documented approximation for near-surface
+  // soil thermal inertia. Falls back to the previous current-week-average
+  // behavior when that climatology hasn't loaded (or failed to load).
+  function estimateGroundTempC(season, atDate) {
+    const monthly = season.monthlyTemp;
+    if (Array.isArray(monthly) && monthly.length === 12) {
+      const now = atDate || new Date();
+      const laggedIdx = (now.getMonth() - 1 + 12) % 12;
+      const v = monthly[laggedIdx] && monthly[laggedIdx].tempC;
+      if (Number.isFinite(v)) return v;
+    }
+    if (Number.isFinite(season.avgTempCAnnual)) return season.avgTempCAnnual;
+    return (season.tMin + season.tMax) / 2;
+  }
+
+  function massFilmCoefficient(exposure) {
+    const table = CFG.PHYSICS.THERMAL_MASS_EXPOSURE_H_VALUES;
+    return (table && table[exposure]) || CFG.PHYSICS.MASS_FILM_COEFF_W_M2K;
+  }
+
   // ---- Core hourly simulation --------------------------------------------
   // design: see data model in ARCHITECTURE.md / store.js
   // climate: { season: {tMin,tMax,solarKwhDay,sunrise,sunset,windMs,rhPct}, latitude }
   // simConfig: { timeStepMinutes, days }
   function runSimulation(design, season, simConfig) {
-    const geom = computeGeometry(design);
+    const geom = computeGeometry(design, season.latitude);
     const uWall = wallUValue(design), uRoof = roofUValue(design), uFloor = floorUValue(design);
     const windowGroups = (design.windows || []).map(w => ({
       ...w, uValue: windowUValue(w), shgc: (DATA.materialById(w.glazingMaterialId) || {}).shgc || 0.7,
@@ -303,6 +383,7 @@ window.APP_ENGINE = (function () {
     const massMat = massActive ? DATA.materialById(tm.materialId) : null;
     let cMass = massActive ? tm.massKg * (massMat.cp || 900) : 0;
     const massArea = massActive ? (tm.surfaceAreaM2 || 5) : 0;
+    const massH = massActive ? massFilmCoefficient(tm.exposure) : 0;
     const isPcm = massActive && massMat && massMat.pcmMeltC != null;
 
     const cAir = geom.volume * AIR_RHO * AIR_CP * CFG.PHYSICS.FURNISHING_CAPACITANCE_FACTOR;
@@ -311,6 +392,9 @@ window.APP_ENGINE = (function () {
     // hourly loop below rather than re-looked-up every iteration.
     const wallMat = DATA.materialById(design.wall.materialId) || { absorptivity: 0.6 };
     const roofMat = DATA.materialById(design.roof.materialId) || { absorptivity: 0.6 };
+    // Also constant for the whole run (doesn't depend on hourDecimal) —
+    // see estimateGroundTempC above.
+    const tGround = design.groundTempC ?? estimateGroundTempC(season);
 
     const dtSec = (simConfig.timeStepMinutes || 60) * 60;
     const stepsPerDay = Math.round(24 * 3600 / dtSec);
@@ -333,6 +417,11 @@ window.APP_ENGINE = (function () {
       const hourDecimal = (i * dtSec / 3600) % 24;
       const tAmb = ambientTempAt(season, hourDecimal);
       const gHoriz = solarIrradianceAt(season, hourDecimal);
+      // Real per-hour wind (falls back to the day's average when no hourly
+      // series exists) feeding the ASHRAE wind-adjusted film coefficient —
+      // see windAdjustedFilmCoefficient above for why this is kept separate
+      // from the static H_O used in wallUValue/roofUValue.
+      const hOuterNow = windAdjustedFilmCoefficient(windSpeedAt(season, hourDecimal));
 
       // Sol-air temps per face (opaque) — wallMat/roofMat hoisted above the
       // loop. Uses each face's SOLID area (solidFaceAreas), not its full
@@ -342,19 +431,18 @@ window.APP_ENGINE = (function () {
       geom.faces.forEach((f, fi) => {
         const solidArea = solidFaceAreas[fi];
         const gFace = gHoriz * f.factor;
-        const tSolAir = tAmb + (wallMat.absorptivity * gFace) / H_O;
+        const tSolAir = tAmb + (wallMat.absorptivity * gFace) / hOuterNow;
         wallUA += uWall * solidArea;
         wallRefSum += uWall * solidArea * tSolAir;
       });
-      const tSolAirRoof = tAmb + (roofMat.absorptivity * gHoriz) / H_O;
+      const tSolAirRoof = tAmb + (roofMat.absorptivity * gHoriz) / hOuterNow;
       const roofUA = uRoof * geom.roofArea, roofRef = roofUA * tSolAirRoof;
-      const tGround = design.groundTempC ?? (season.tMin + season.tMax) / 2;
       const floorUA = uFloor * geom.floorArea, floorRef = floorUA * tGround;
 
       let qSolarWindow = 0, windowCondUA = 0;
       windowGroups.forEach(w => {
         const off = { FRONT: 0, BACK: 180, LEFT: -90, RIGHT: 90, PRIMARY: 0 }[w.orientation] ?? 0;
-        const f = faceFactor(geom.frontAzimuth, off);
+        const f = faceFactor(geom.frontAzimuth, off, season.latitude);
         qSolarWindow += w.totalArea * gHoriz * f * w.shgc;
         windowCondUA += w.uValue * w.totalArea;
       });
@@ -362,7 +450,7 @@ window.APP_ENGINE = (function () {
       const doorUA = 1.8 * doorArea, doorRef = doorUA * tAmb; // typical insulated door U~1.8 W/m2K, documented assumption
       const ventRef = ventUA * tAmb; // ventUA (infiltration + occupancy) hoisted above the loop — constant for the run
       const qInternal = occ.totalSensibleW; // sensible-only: occupant sensible share + equipment gain
-      const massUA = massActive ? H_MASS * massArea : 0, massRef = massUA * tMass;
+      const massUA = massActive ? massH * massArea : 0, massRef = massUA * tMass;
 
       const totalUA = wallUA + roofUA + floorUA + windowCondUA + doorUA + ventUA + massUA;
       const totalRef = wallRefSum + roofRef + floorRef + windowCondRef + doorRef + ventRef + massRef + qSolarWindow + qInternal;
@@ -701,7 +789,7 @@ window.APP_ENGINE = (function () {
   // runOptimization() picks a winner, just scoped to one parameter.
   function recommendWindowLayout(design, season, simConfig) {
     if (!season) return null;
-    const geom = computeGeometry(design);
+    const geom = computeGeometry(design, season.latitude);
     const groups = design.windows || [];
     const totalArea = groups.reduce((s, w) => s + (w.areaEach || 0) * (w.count || 0), 0);
     const totalCount = groups.reduce((s, w) => s + (w.count || 0), 0);
@@ -711,7 +799,7 @@ window.APP_ENGINE = (function () {
 
     const OFFSETS = { FRONT: 0, BACK: 180, LEFT: -90, RIGHT: 90 };
     const ranked = Object.keys(OFFSETS)
-      .map(face => ({ face, factor: faceFactor(geom.frontAzimuth, OFFSETS[face]) }))
+      .map(face => ({ face, factor: faceFactor(geom.frontAzimuth, OFFSETS[face], season.latitude) }))
       .sort((a, b) => b.factor - a.factor);
     const [best, second, third] = ranked;
 
@@ -764,11 +852,12 @@ window.APP_ENGINE = (function () {
 
   return {
     computeGeometry, wallUValue, roofUValue, floorUValue, windowUValue,
-    ambientTempAt, solarIrradianceAt, runSimulation, estimateCost,
+    ambientTempAt, solarIrradianceAt, windSpeedAt, runSimulation, estimateCost,
     computeOccupancyHeat, occupancyAchIncrement,
     windAdjustedInfiltrationAch, ventUAFromAch,
+    windAdjustedFilmCoefficient, estimateGroundTempC, massFilmCoefficient,
     generateCandidates, scoreCandidate, runOptimization, sensitivityAnalysis, recommendWindowLayout,
     validationStats, validateDesign, validateCoordinates,
-    orientationFactorFromAngle, faceFactor, frontAzimuthOf
+    orientationFactorFromAngle, faceFactor, frontAzimuthOf, orientationFactorTableForLatitude
   };
 })();

@@ -19,7 +19,10 @@ window.APP_STORE = (function () {
       windows: [{ areaEach: 2.4, count: 1, orientation: "FRONT", glazingMaterialId: "glaze_double" }],
       doors: [{ areaEach: 1.8, count: 1, orientation: "FRONT" }],
       airLeakageAch: 0.8,
-      thermalMass: { materialId: "mass_stone", massKg: 800, surfaceAreaM2: 6 },
+      // exposure: how much room-air movement reaches the mass surface —
+      // see config.js THERMAL_MASS_EXPOSURE_H_VALUES. FLOOR is the default
+      // so any design saved before this field existed keeps its old h_mass.
+      thermalMass: { materialId: "mass_stone", massKg: 800, surfaceAreaM2: 6, exposure: "FLOOR" },
       occupancy: 2,
       occupancyActivity: "SEATED",
       internalHeatGainW: 150, // equipment/other gain, separate from occupant heat (see engine.js computeOccupancyHeat)
@@ -68,6 +71,7 @@ window.APP_STORE = (function () {
       const parsed = JSON.parse(raw);
       // Backfill fields added after a save may have happened under an older shape.
       if (parsed.design && parsed.design.occupancyActivity == null) parsed.design.occupancyActivity = "SEATED";
+      if (parsed.design && parsed.design.thermalMass && parsed.design.thermalMass.exposure == null) parsed.design.thermalMass.exposure = "FLOOR";
       if (parsed.theme == null) parsed.theme = "LIGHT";
       // A cached RESULT computed by an older engine/API version isn't
       // salvageable by patching a field or two — it's missing whole nested
@@ -238,6 +242,16 @@ window.APP_STORE = (function () {
         ghiKwhM2DayAnnual: nasa.ghiKwhM2DayAnnual, dniKwhM2DayAnnual: nasa.dniKwhM2DayAnnual, difKwhM2DayAnnual: nasa.difKwhM2DayAnnual,
         monthlyGhi: nasa.monthlyGhi, monthlyTemp: nasa.monthlyTemp
       };
+      // Also merge onto the live season object (STORE.currentSeason()) so
+      // ENGINE.runSimulation's ground-temperature estimate (see
+      // estimateGroundTempC in engine.js) can use real per-location 20-yr
+      // monthly/annual normals instead of the current forecast week's mean
+      // — every simulation call already reads its `season` from here.
+      const season = state.location.seasons && state.location.seasons[state.seasonKey];
+      if (season) {
+        season.avgTempCAnnual = nasa.tempCAnnual;
+        season.monthlyTemp = nasa.monthlyTemp;
+      }
       save();
     }).catch(() => {
       // Leave the Open-Meteo-derived extrapolation in place; UI labels it
@@ -257,6 +271,10 @@ window.APP_STORE = (function () {
     const loc = DATA.predefinedLocationById(locationId);
     if (!loc) throw new Error("Unknown location: " + locationId);
     const climate = await window.APP_WEATHER.fetchOpenMeteo(loc.latitude, loc.longitude, opts);
+    // Known immediately (no need to wait on the NASA fetch below) — read
+    // by ENGINE.runSimulation for latitude-aware orientation factors (see
+    // orientationFactorTableForLatitude in engine.js).
+    climate.latitude = loc.latitude;
     state.locationKey = loc.id;
     state.location = {
       key: loc.id || null, label: loc.name,
@@ -285,6 +303,7 @@ window.APP_STORE = (function () {
   // its locationId argument.
   async function loadCustomLocation(lat, lon, label, opts) {
     const climate = await window.APP_WEATHER.fetchOpenMeteo(lat, lon, opts);
+    climate.latitude = lat; // see loadRealClimate — read by ENGINE.runSimulation
     const trimmedLabel = label && label.trim() ? label.trim() : null;
     // Best-effort reverse geocode (OpenStreetMap Nominatim, via util.js) so a
     // custom point gets a real place name + region instead of a bare

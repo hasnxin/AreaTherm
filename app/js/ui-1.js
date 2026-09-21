@@ -885,6 +885,13 @@ window.UI = window.UI || {};
               ${DATA.materialsByCategory("THERMAL_MASS").map(m=>`<option value="${m.id}" ${d.thermalMass && d.thermalMass.materialId===m.id?"selected":""}>${m.name}</option>`).join("")}
             </select></div>
             <div class="form-row"><label>Thermal mass (kg)</label><input id="dMassKg" type="number" value="${d.thermalMass?d.thermalMass.massKg:0}"></div>
+            <div class="form-row"><label>Mass exposure</label>
+              <select id="dMassExposure">
+                ${[["FLOOR","Floor-embedded (still air)"],["WALL","Internal wall (room air movement)"],["DEDICATED","Dedicated / fan-assisted"],["BURIED","Buried / earth-sheltered"]]
+                  .map(([v,label])=>`<option value="${v}" ${(d.thermalMass&&d.thermalMass.exposure||"FLOOR")===v?"selected":""}>${label}</option>`).join("")}
+              </select>
+              <span class="hint">How much room air reaches the mass surface — sets the heat-exchange coefficient (h_mass) between it and indoor air.</span>
+            </div>
           </fieldset>
         </div>
         <button class="btn btn-accent" id="saveMaterialsBtn">Save construction</button>
@@ -1017,7 +1024,8 @@ window.UI = window.UI || {};
       if (massMatId && massKg > 0) {
         let floorArea = geom.floorArea;
         try { floorArea = ENGINE.computeGeometry(draft).floorArea; } catch (e) { /* mid-edit, keep last-known geometry */ }
-        draft.thermalMass = { materialId: massMatId, massKg, surfaceAreaM2: Math.min(floorArea, massKg / 300) };
+        const exposureEl = U.qs("#dMassExposure", root);
+        draft.thermalMass = { materialId: massMatId, massKg, surfaceAreaM2: Math.min(floorArea, massKg / 300), exposure: exposureEl ? exposureEl.value : "FLOOR" };
       } else {
         draft.thermalMass = null;
       }

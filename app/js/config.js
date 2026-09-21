@@ -17,8 +17,29 @@ window.APP_CONFIG = {
   PHYSICS: {
     AIR_DENSITY_KG_M3: 1.2,
     AIR_CP_J_KGK: 1005,
+    // Fixed design value for the wall/roof U-value's outside-air surface
+    // resistance (Rso) — a static assembly property by convention, so it
+    // intentionally does NOT vary with the current hour's wind (see
+    // WIND_FILM_COEFF_* below for the hourly-varying coefficient used
+    // instead in the sol-air temperature term).
     OUTSIDE_FILM_COEFF_W_M2K: 23,
+    // ASHRAE Fundamentals correlation for exterior convective film
+    // coefficient as a function of wind speed: h_o = BASE + PER_MS × V
+    // (m/s). Used only for the hourly sol-air temperature term in
+    // engine.js's runSimulation — that term already varies hour-to-hour
+    // with real weather, unlike the static Rso above.
+    WIND_FILM_COEFF_BASE_W_M2K: 5.8,
+    WIND_FILM_COEFF_PER_MS: 3.9,
     MASS_FILM_COEFF_W_M2K: 8,
+    // Natural/forced-convection film coefficient by thermal-mass exposure —
+    // a documented heuristic (order-of-magnitude natural-convection range,
+    // not an independently lab-measured figure), not a uniform constant:
+    // a floor-embedded mass sees far less room-air movement than an
+    // exposed, fan-assisted one. FLOOR matches MASS_FILM_COEFF_W_M2K above
+    // so any design saved before this field existed behaves identically.
+    THERMAL_MASS_EXPOSURE_H_VALUES: {
+      FLOOR: 8, WALL: 12, DEDICATED: 15, BURIED: 6
+    },
     FURNISHING_CAPACITANCE_FACTOR: 1.0,
     // Documented assumption (order-of-magnitude general ventilation guideline,
     // not a specific code-compliance calculation): additional fresh-air
