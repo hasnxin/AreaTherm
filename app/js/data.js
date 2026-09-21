@@ -80,13 +80,6 @@ window.APP_DATA = (function () {
     { id: "glaze_lowe", category: "WINDOW", name: "Low-E Double Glazing", uValue: 1.8, shgc: 0.62, costPerM2: 4200, sustainability: "HIGH" }
   ];
 
-  // ---- Comfort profile — human occupancy only -------------------------
-  // This prototype targets one occupancy type: human shelter occupants.
-  // Non-human use cases (storage, livestock, equipment) are out of scope.
-  const COMFORT_PROFILES = [
-    { id: "human", label: "Human Occupancy", min: 18, max: 27 }
-  ];
-
   // Clothing insulation (clo) and comfort-band activity (met) presets,
   // ASHRAE-55-style. minShiftC is a documented heuristic (~3-4°C per clo /
   // met step, standard building-comfort literature), applied only to the
@@ -195,7 +188,7 @@ window.APP_DATA = (function () {
   }
 
   return {
-    PREDEFINED_LOCATIONS, MATERIALS, COMFORT_PROFILES,
+    PREDEFINED_LOCATIONS, MATERIALS,
     CLOTHING_LEVELS, COMFORT_ACTIVITY_LEVELS, ACTIVITY_LEVELS, HUMIDITY_COMFORT_BAND,
     materialsByCategory, materialById, predefinedLocationById, nearestPredefinedLocation,
     clothingLevelById, comfortActivityLevelById, activityLevelById, effectiveComfortMin,

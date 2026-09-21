@@ -1289,10 +1289,7 @@ window.UI = window.UI || {};
       ${guidedStepBar(4)}
       <div class="card">
         <h3>Step 4 — Set Comfort Range &amp; Occupancy</h3>
-        <p class="subtitle">This prototype models thermal comfort for human occupants.</p>
-        <div class="form-row" style="max-width:340px;"><label>What is this shelter for?</label>
-          <select id="gComfortProfile">${DATA.COMFORT_PROFILES.map(p => `<option value="${p.id}" ${c.profileId===p.id?"selected":""}>${p.label}</option>`).join("")}</select>
-        </div>
+        <p class="subtitle">This prototype models thermal comfort for human occupants only.</p>
         <div class="form-inline">
           <div class="form-row"><label>Min comfortable temp (°C)</label><input id="gMin" type="number" value="${baseMin}"></div>
           <div class="form-row"><label>Max comfortable temp (°C)</label><input id="gMax" type="number" value="${c.max}"></div>
@@ -1324,7 +1321,7 @@ window.UI = window.UI || {};
       const activityLevel = U.qs("#gComfortActivity", root).value;
       STORE.updateDesign({
         comfort: {
-          profileId: U.qs("#gComfortProfile", root).value, baseMin: baseMinVal, max: maxVal, clothingLevel, activityLevel,
+          profileId: "human", baseMin: baseMinVal, max: maxVal, clothingLevel, activityLevel,
           min: DATA.effectiveComfortMin(baseMinVal, clothingLevel, activityLevel, maxVal)
         },
         occupancy: parseInt(U.qs("#gOccupancy", root).value) || 0,
