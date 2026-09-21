@@ -458,9 +458,21 @@ window.UI = window.UI || {};
   };
 
   // ---------------------------------------------------------------------
+  function localStorageUsageKB() {
+    let total = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        total += k.length + (localStorage.getItem(k) || "").length;
+      }
+    } catch (e) { return null; }
+    return Math.round(total / 1024);
+  }
+
   UI.renderSettings = function (root) {
     const s = STORE.get();
     const projects = STORE.listProjects();
+    const storageKB = localStorageUsageKB();
     root.innerHTML = `
       <h1>Settings</h1>
       <div class="grid grid-2">
@@ -531,6 +543,8 @@ window.UI = window.UI || {};
           <li>Fallback chain: live fetch → fresh cache → stale cache → a clear error message. The data-source badge always reflects which tier actually served the number.</li>
           <li>Every simulation input is validated (positive dimensions/thickness, valid comfort range, valid coordinates) before it reaches the physics solver, with a specific on-screen message instead of a crash.</li>
         </ul>
+        <p class="hint" style="margin-top:10px;">Cached weather/NASA POWER/elevation lookups are kept indefinitely as an offline fallback and are never deleted automatically — after enough different locations they can fill the browser's storage quota, which then blocks new saves (designs, simulations stop persisting). Browser storage used: <b>${storageKB == null ? "unavailable" : storageKB + " KB"}</b>.</p>
+        <button class="btn btn-sm" id="clearCacheBtn">Clear cached location data</button>
       </div>
 
       <div class="card" style="margin-top:16px;">
@@ -579,6 +593,11 @@ window.UI = window.UI || {};
     U.on("#unitsMetricBtn", "click", () => { s.units = "METRIC"; STORE.save(); window.APP.render(); }, root);
     U.on("#unitsImperialBtn", "click", () => { s.units = "IMPERIAL"; STORE.save(); window.APP.render(); }, root);
     U.on("#saveProjNameBtn", "click", () => { s.project.name = U.qs("#projNameInput", root).value; STORE.save(); window.APP.render(); }, root);
+    U.on("#clearCacheBtn", "click", () => {
+      const freed = STORE.clearCache();
+      window.APP.toast(freed ? `Cleared ${freed} cached location lookup${freed === 1 ? "" : "s"} — the next simulation will re-fetch live data as needed.` : "No cached location data to clear.");
+      window.APP.render();
+    }, root);
     U.on("#resetProjectBtn", "click", () => {
       if (confirm("This clears all simulations, designs, and validation data in this browser session. Continue?")) {
         STORE.reset(); window.APP.render();

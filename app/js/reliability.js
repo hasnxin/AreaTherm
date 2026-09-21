@@ -80,7 +80,10 @@ window.APP_RELIABLE = (function () {
   }
 
   // ---- Tiered cache (localStorage). Never deleted on expiry so a stale
-  // value can still serve as a last-resort fallback tier. -----------------
+  // value can still serve as a last-resort fallback tier — every unique
+  // location ever looked up (weather/NASA POWER/elevation, each keyed by
+  // lat/lon) accumulates here forever, so without the eviction below it's
+  // an unbounded, slowly-growing consumer of the browser's storage quota.
   function cacheRead(key) {
     try {
       const raw = localStorage.getItem(key);
@@ -88,8 +91,44 @@ window.APP_RELIABLE = (function () {
       return JSON.parse(raw);
     } catch (e) { return null; }
   }
+
+  // Every entry this module ever writes has this exact {data, fetchedAt}
+  // shape, so it can be found by shape alone — no need for every caller to
+  // separately register its cache-key prefix just so cleanup can find it.
+  function scanCacheEntries() {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      let parsed;
+      try { parsed = JSON.parse(localStorage.getItem(k)); } catch (e) { continue; }
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof parsed.fetchedAt === "number" && "data" in parsed) {
+        out.push({ key: k, fetchedAt: parsed.fetchedAt });
+      }
+    }
+    return out;
+  }
+  function evictOldestCacheEntries(count) {
+    const victims = scanCacheEntries().sort((a, b) => a.fetchedAt - b.fetchedAt).slice(0, count);
+    victims.forEach(e => localStorage.removeItem(e.key));
+    return victims.length;
+  }
+  function clearAllCache() {
+    return evictOldestCacheEntries(Infinity);
+  }
+
   function cacheWrite(key, data) {
-    try { localStorage.setItem(key, JSON.stringify({ data, fetchedAt: Date.now() })); } catch (e) { /* storage unavailable (private mode, quota) */ }
+    const payload = JSON.stringify({ data, fetchedAt: Date.now() });
+    try {
+      localStorage.setItem(key, payload);
+    } catch (e) {
+      // Quota exceeded (most likely — private mode/disabled storage would
+      // also land here, and the retry below is a harmless no-op for those).
+      // These entries are disposable and re-fetchable, unlike the user's
+      // actual design/project data, so it's safe to make room by evicting
+      // the oldest of them rather than just losing this write silently.
+      evictOldestCacheEntries(10);
+      try { localStorage.setItem(key, payload); } catch (e2) { /* still unavailable */ }
+    }
   }
 
   // ---- Fallback chain: live -> fresh cache -> stale cache -> clear error -
@@ -137,5 +176,5 @@ window.APP_RELIABLE = (function () {
     }
   }
 
-  return { fetchJsonWithTimeout, withRetry, reliableFetch, breakerStatus, cacheRead, cacheWrite };
+  return { fetchJsonWithTimeout, withRetry, reliableFetch, breakerStatus, cacheRead, cacheWrite, evictOldestCacheEntries, clearAllCache };
 })();

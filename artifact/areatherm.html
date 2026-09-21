@@ -1407,7 +1407,10 @@ window.APP_RELIABLE = (function () {
   }
 
   // ---- Tiered cache (localStorage). Never deleted on expiry so a stale
-  // value can still serve as a last-resort fallback tier. -----------------
+  // value can still serve as a last-resort fallback tier — every unique
+  // location ever looked up (weather/NASA POWER/elevation, each keyed by
+  // lat/lon) accumulates here forever, so without the eviction below it's
+  // an unbounded, slowly-growing consumer of the browser's storage quota.
   function cacheRead(key) {
     try {
       const raw = localStorage.getItem(key);
@@ -1415,8 +1418,44 @@ window.APP_RELIABLE = (function () {
       return JSON.parse(raw);
     } catch (e) { return null; }
   }
+
+  // Every entry this module ever writes has this exact {data, fetchedAt}
+  // shape, so it can be found by shape alone — no need for every caller to
+  // separately register its cache-key prefix just so cleanup can find it.
+  function scanCacheEntries() {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      let parsed;
+      try { parsed = JSON.parse(localStorage.getItem(k)); } catch (e) { continue; }
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof parsed.fetchedAt === "number" && "data" in parsed) {
+        out.push({ key: k, fetchedAt: parsed.fetchedAt });
+      }
+    }
+    return out;
+  }
+  function evictOldestCacheEntries(count) {
+    const victims = scanCacheEntries().sort((a, b) => a.fetchedAt - b.fetchedAt).slice(0, count);
+    victims.forEach(e => localStorage.removeItem(e.key));
+    return victims.length;
+  }
+  function clearAllCache() {
+    return evictOldestCacheEntries(Infinity);
+  }
+
   function cacheWrite(key, data) {
-    try { localStorage.setItem(key, JSON.stringify({ data, fetchedAt: Date.now() })); } catch (e) { /* storage unavailable (private mode, quota) */ }
+    const payload = JSON.stringify({ data, fetchedAt: Date.now() });
+    try {
+      localStorage.setItem(key, payload);
+    } catch (e) {
+      // Quota exceeded (most likely — private mode/disabled storage would
+      // also land here, and the retry below is a harmless no-op for those).
+      // These entries are disposable and re-fetchable, unlike the user's
+      // actual design/project data, so it's safe to make room by evicting
+      // the oldest of them rather than just losing this write silently.
+      evictOldestCacheEntries(10);
+      try { localStorage.setItem(key, payload); } catch (e2) { /* still unavailable */ }
+    }
   }
 
   // ---- Fallback chain: live -> fresh cache -> stale cache -> clear error -
@@ -1464,7 +1503,7 @@ window.APP_RELIABLE = (function () {
     }
   }
 
-  return { fetchJsonWithTimeout, withRetry, reliableFetch, breakerStatus, cacheRead, cacheWrite };
+  return { fetchJsonWithTimeout, withRetry, reliableFetch, breakerStatus, cacheRead, cacheWrite, evictOldestCacheEntries, clearAllCache };
 })();
 
 </script>
@@ -3091,12 +3130,32 @@ window.APP_STORE = (function () {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
-      if (!storageWarned && window.APP && window.APP.toast) {
+      // Most likely the quota is full of disposable weather/NASA/elevation
+      // lookups (see reliability.js) — clear all of that first and retry
+      // once before giving up, since losing the user's actual in-progress
+      // design is far worse than having to re-fetch a location's climate.
+      let recovered = false;
+      if (window.APP_RELIABLE) {
+        try {
+          window.APP_RELIABLE.clearAllCache();
+          localStorage.setItem(KEY, JSON.stringify(state));
+          recovered = true;
+        } catch (e2) { /* still full — genuinely out of room or storage disabled */ }
+      }
+      if (!recovered && !storageWarned && window.APP && window.APP.toast) {
         storageWarned = true;
         window.APP.toast("Could not save project — browser storage is full or unavailable. Your changes may not persist.");
       }
     }
     mirrorIntoProjectsList();
+  }
+
+  // Frees the disposable reliability-layer cache (weather/NASA POWER/
+  // elevation lookups, never auto-evicted — see reliability.js). Exposed so
+  // Settings can offer it as a manual "storage full" recovery action; save()
+  // above already does this automatically the moment a write actually fails.
+  function clearCache() {
+    return window.APP_RELIABLE ? window.APP_RELIABLE.clearAllCache() : 0;
   }
 
   function get() { return state; }
@@ -3118,7 +3177,13 @@ window.APP_STORE = (function () {
     } catch (e) { return []; }
   }
   function writeProjectsList(list) {
-    try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ }
+    try {
+      localStorage.setItem(PROJECTS_KEY, JSON.stringify(list));
+    } catch (e) {
+      if (window.APP_RELIABLE) {
+        try { window.APP_RELIABLE.clearAllCache(); localStorage.setItem(PROJECTS_KEY, JSON.stringify(list)); } catch (e2) { /* still unavailable */ }
+      }
+    }
   }
   function mirrorIntoProjectsList() {
     if (!state.project || !state.project.id) return;
@@ -3305,6 +3370,7 @@ window.APP_STORE = (function () {
 
   function addValidationDataset(ds) {
     state.validationDatasets.unshift(ds);
+    state.validationDatasets = state.validationDatasets.slice(0, 10); // each carries a full points[] series — unbounded growth here fills storage just as surely as the reliability cache
     save();
   }
 
@@ -3317,7 +3383,7 @@ window.APP_STORE = (function () {
     get, save, reset, loadRealClimate, loadCustomLocation,
     currentSeason, updateDesign, setTheme,
     recordSimulation, recordOptimization, addValidationDataset, defaultDesign,
-    listProjects, saveAsProject, loadProject, deleteProject, newProject
+    listProjects, saveAsProject, loadProject, deleteProject, newProject, clearCache
   };
 })();
 
@@ -5882,9 +5948,21 @@ window.UI = window.UI || {};
   };
 
   // ---------------------------------------------------------------------
+  function localStorageUsageKB() {
+    let total = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        total += k.length + (localStorage.getItem(k) || "").length;
+      }
+    } catch (e) { return null; }
+    return Math.round(total / 1024);
+  }
+
   UI.renderSettings = function (root) {
     const s = STORE.get();
     const projects = STORE.listProjects();
+    const storageKB = localStorageUsageKB();
     root.innerHTML = `
       <h1>Settings</h1>
       <div class="grid grid-2">
@@ -5955,6 +6033,8 @@ window.UI = window.UI || {};
           <li>Fallback chain: live fetch → fresh cache → stale cache → a clear error message. The data-source badge always reflects which tier actually served the number.</li>
           <li>Every simulation input is validated (positive dimensions/thickness, valid comfort range, valid coordinates) before it reaches the physics solver, with a specific on-screen message instead of a crash.</li>
         </ul>
+        <p class="hint" style="margin-top:10px;">Cached weather/NASA POWER/elevation lookups are kept indefinitely as an offline fallback and are never deleted automatically — after enough different locations they can fill the browser's storage quota, which then blocks new saves (designs, simulations stop persisting). Browser storage used: <b>${storageKB == null ? "unavailable" : storageKB + " KB"}</b>.</p>
+        <button class="btn btn-sm" id="clearCacheBtn">Clear cached location data</button>
       </div>
 
       <div class="card" style="margin-top:16px;">
@@ -6003,6 +6083,11 @@ window.UI = window.UI || {};
     U.on("#unitsMetricBtn", "click", () => { s.units = "METRIC"; STORE.save(); window.APP.render(); }, root);
     U.on("#unitsImperialBtn", "click", () => { s.units = "IMPERIAL"; STORE.save(); window.APP.render(); }, root);
     U.on("#saveProjNameBtn", "click", () => { s.project.name = U.qs("#projNameInput", root).value; STORE.save(); window.APP.render(); }, root);
+    U.on("#clearCacheBtn", "click", () => {
+      const freed = STORE.clearCache();
+      window.APP.toast(freed ? `Cleared ${freed} cached location lookup${freed === 1 ? "" : "s"} — the next simulation will re-fetch live data as needed.` : "No cached location data to clear.");
+      window.APP.render();
+    }, root);
     U.on("#resetProjectBtn", "click", () => {
       if (confirm("This clears all simulations, designs, and validation data in this browser session. Continue?")) {
         STORE.reset(); window.APP.render();

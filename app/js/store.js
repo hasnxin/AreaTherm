@@ -93,12 +93,32 @@ window.APP_STORE = (function () {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
-      if (!storageWarned && window.APP && window.APP.toast) {
+      // Most likely the quota is full of disposable weather/NASA/elevation
+      // lookups (see reliability.js) — clear all of that first and retry
+      // once before giving up, since losing the user's actual in-progress
+      // design is far worse than having to re-fetch a location's climate.
+      let recovered = false;
+      if (window.APP_RELIABLE) {
+        try {
+          window.APP_RELIABLE.clearAllCache();
+          localStorage.setItem(KEY, JSON.stringify(state));
+          recovered = true;
+        } catch (e2) { /* still full — genuinely out of room or storage disabled */ }
+      }
+      if (!recovered && !storageWarned && window.APP && window.APP.toast) {
         storageWarned = true;
         window.APP.toast("Could not save project — browser storage is full or unavailable. Your changes may not persist.");
       }
     }
     mirrorIntoProjectsList();
+  }
+
+  // Frees the disposable reliability-layer cache (weather/NASA POWER/
+  // elevation lookups, never auto-evicted — see reliability.js). Exposed so
+  // Settings can offer it as a manual "storage full" recovery action; save()
+  // above already does this automatically the moment a write actually fails.
+  function clearCache() {
+    return window.APP_RELIABLE ? window.APP_RELIABLE.clearAllCache() : 0;
   }
 
   function get() { return state; }
@@ -120,7 +140,13 @@ window.APP_STORE = (function () {
     } catch (e) { return []; }
   }
   function writeProjectsList(list) {
-    try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ }
+    try {
+      localStorage.setItem(PROJECTS_KEY, JSON.stringify(list));
+    } catch (e) {
+      if (window.APP_RELIABLE) {
+        try { window.APP_RELIABLE.clearAllCache(); localStorage.setItem(PROJECTS_KEY, JSON.stringify(list)); } catch (e2) { /* still unavailable */ }
+      }
+    }
   }
   function mirrorIntoProjectsList() {
     if (!state.project || !state.project.id) return;
@@ -307,6 +333,7 @@ window.APP_STORE = (function () {
 
   function addValidationDataset(ds) {
     state.validationDatasets.unshift(ds);
+    state.validationDatasets = state.validationDatasets.slice(0, 10); // each carries a full points[] series — unbounded growth here fills storage just as surely as the reliability cache
     save();
   }
 
@@ -319,6 +346,6 @@ window.APP_STORE = (function () {
     get, save, reset, loadRealClimate, loadCustomLocation,
     currentSeason, updateDesign, setTheme,
     recordSimulation, recordOptimization, addValidationDataset, defaultDesign,
-    listProjects, saveAsProject, loadProject, deleteProject, newProject
+    listProjects, saveAsProject, loadProject, deleteProject, newProject, clearCache
   };
 })();
