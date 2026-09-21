@@ -689,10 +689,10 @@ window.UI = window.UI || {};
             <div id="preview2d"></div>
           </div>
           <div class="card" style="margin-top:16px;">
-            <h3>3D Preview <span class="tag tag-demo">illustrative — box approximation</span></h3>
+            <h3>3D Preview <span class="tag tag-demo">illustrative</span></h3>
             <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:8px; cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
-            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and windows are shown on the "Door face"/"Window face" walls set below — window orientation also drives the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape) ? "Shown as a bounding box — this view doesn't yet model curved or L-shaped footprints." : ""}</p>
+            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and windows are shown on the "Door face"/"Window face" walls set below — window orientation also drives the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>Derived Geometry <span class="tag tag-model">calculated</span></h3>
@@ -740,9 +740,11 @@ window.UI = window.UI || {};
 
     drawShelterPreview(U.qs("#preview2d", root), d, geom);
 
-    // 3D preview: box approximation using the shape's overall bounding
-    // dimensions (geom.L / geom.W already cover this for every shape,
-    // including circular/L — see the note rendered above the canvas).
+    // 3D preview: renders shape-specific geometry (box/cylinder/dome/L-shape
+    // extrusion — see shelter3d.js) matching engine.js's own computeGeometry()
+    // semantics for each shape. geom.L/geom.W cover the bounding box for
+    // every shape; diameter and the L-shape wing dimensions are pulled
+    // straight off `design` since computeGeometry() doesn't expose them.
     // Loaded as an ES module (see index.html's import map), which can
     // still be mid-fetch the first time this page renders — retried a
     // few times before giving up gracefully rather than blocking on it.
@@ -750,7 +752,11 @@ window.UI = window.UI || {};
       if (!currentShelter3D) return;
       const wallMatId = design.wall && design.wall.materialId;
       currentShelter3D.update({
+        shape: design.shape || "RECTANGULAR",
         width: g.L, length: g.W || g.L, height: design.height || 3,
+        diameter: design.diameter || g.diameter || 5,
+        lengthA: design.lengthA || 4, widthA: design.widthA || 4,
+        lengthB: design.lengthB || 3, widthB: design.widthB || 3,
         doorCount: (design.doors || []).reduce((s, dr) => s + (dr.count || 0), 0),
         doorFace: (design.doors && design.doors[0] && design.doors[0].orientation) || "FRONT",
         windowCount: (design.windows || []).reduce((s, w) => s + (w.count || 0), 0),

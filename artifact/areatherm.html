@@ -409,13 +409,17 @@ td.num{font-family:var(--mono); text-align:right;}
 <script type="module">
 /* AreaTherm — 3D shelter preview (Vanilla Three.js, ES module, no build step).
    Loaded via an import map (see index.html) — no bundler, matching the rest
-   of this project's zero-build-step architecture. Renders a parametric box
-   shelter with door/window placeholders and a sun that orbits the building
-   on a fixed-elevation circle driven by `sunAngle`.
+   of this project's zero-build-step architecture. Renders a parametric
+   shelter — box, cylinder, dome, or L-shaped extrusion, matching whichever
+   shape engine.js's computeGeometry() actually computes for — with door/
+   window placeholders on their configured face, and a sun that orbits the
+   building on a fixed-elevation circle driven by `sunAngle`.
 
    Usage from any classic (non-module) script, once this module has loaded:
      const view = new window.AreaTherm3D.Shelter3D(canvasEl);
-     view.update({ width, length, height, doorCount, windowCount, wallColor, sunAngle });
+     view.update({ shape, width, length, height, diameter, lengthA, widthA,
+                    lengthB, widthB, doorCount, doorFace, windowCount,
+                    windowFace, wallColor, sunAngle });
      // ...later, e.g. on navigating away from the page:
      view.dispose();
 
@@ -429,13 +433,20 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 const DOOR_SIZE = { w: 0.9, h: 2.0 };   // metres — clamped down for small/crowded walls
 const WINDOW_SIZE = { w: 1.1, h: 1.2 };
 const SUN_ELEVATION_DEG = 38;            // fixed height angle the sun orbits at
+const ROUND_ARC_DEG = 70;                // arc a round shape's openings are allowed to spread across, per face
+const FACE_ANGLE_DEG = { FRONT: 0, RIGHT: 90, BACK: 180, LEFT: 270 }; // matches ui-1.js's edgeOf() convention
 
 export class Shelter3D {
   /** @param {HTMLCanvasElement} canvas */
   constructor(canvas) {
     if (!canvas) throw new Error("Shelter3D: a <canvas> element is required.");
     this.canvas = canvas;
-    this.params = { width: 6, length: 4, height: 3, doorCount: 1, doorFace: "FRONT", windowCount: 2, windowFace: "FRONT", wallColor: "#dfeef2", sunAngle: 135 };
+    this.params = {
+      shape: "RECTANGULAR", width: 6, length: 4, height: 3, diameter: 5,
+      lengthA: 4, widthA: 4, lengthB: 3, widthB: 3,
+      doorCount: 1, doorFace: "FRONT", windowCount: 2, windowFace: "FRONT",
+      wallColor: "#dfeef2", sunAngle: 135
+    };
 
     this._initScene();
     this._initLights();
@@ -485,9 +496,15 @@ export class Shelter3D {
     this.shelterGroup = new THREE.Group();
     this.scene.add(this.shelterGroup);
 
-    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xdfeef2 });
-    this.wallMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.wallMaterial);
-    this.shelterGroup.add(this.wallMesh);
+    // DoubleSide: a hand-built L-shape extrusion's winding direction isn't
+    // worth fighting to get pixel-perfect, and OrbitControls lets the
+    // camera go anywhere regardless of shape — this guarantees every wall
+    // stays visible (and correctly lit — MeshLambertMaterial flips the
+    // normal for back-facing fragments automatically) no matter which way
+    // a given face happens to wind.
+    this.wallMaterial = new THREE.MeshLambertMaterial({ color: 0xdfeef2, side: THREE.DoubleSide });
+    this.wallGroup = new THREE.Group(); // holds whichever geometry the current shape needs (1 mesh for box/cylinder, 2 for dome, 1 extrusion for L-shape)
+    this.shelterGroup.add(this.wallGroup);
 
     // DoubleSide: these sit just outside the wall face, and OrbitControls
     // lets the camera go anywhere — without this they'd be invisible from
@@ -543,22 +560,34 @@ export class Shelter3D {
   // ---- public API ----------------------------------------------------------
 
   /**
-   * @param {{width:number, length:number, height:number, doorCount:number,
-   *          doorFace:('FRONT'|'BACK'|'LEFT'|'RIGHT'), windowCount:number,
-   *          windowFace:('FRONT'|'BACK'|'LEFT'|'RIGHT'),
+   * @param {{shape:('RECTANGULAR'|'SQUARE'|'CIRCULAR'|'DOME'|'SEMI_CIRCULAR'|'L_SHAPE'|'CUSTOM'),
+   *          width:number, length:number, height:number, diameter:number,
+   *          lengthA:number, widthA:number, lengthB:number, widthB:number,
+   *          doorCount:number, doorFace:('FRONT'|'BACK'|'LEFT'|'RIGHT'),
+   *          windowCount:number, windowFace:('FRONT'|'BACK'|'LEFT'|'RIGHT'),
    *          wallColor:string, sunAngle:number}} params
    */
   update(params) {
     this.params = { ...this.params, ...params };
-    const { width, length, height, doorCount, doorFace, windowCount, windowFace, wallColor, sunAngle } = this.params;
+    const p = this.params;
+    const shape = p.shape || "RECTANGULAR";
+    const isRound = shape === "CIRCULAR" || shape === "DOME" || shape === "SEMI_CIRCULAR";
+    const isLShape = shape === "L_SHAPE";
 
-    this._rebuildBox(width, length, height);
-    this.wallMaterial.color.set(wallColor);
-    this._rebuildOpenings(width, length, height, doorCount, windowCount, doorFace || "FRONT", windowFace || "FRONT");
-    this._positionSun(sunAngle, width, length, height);
+    this._rebuildGeometry(shape, p.width, p.length, p.height, p.diameter, p.lengthA, p.widthA, p.lengthB, p.widthB);
+    this.wallMaterial.color.set(p.wallColor);
+    this._rebuildOpenings(shape, p.width, p.length, p.height, p.diameter, p.lengthA, p.widthA, p.lengthB, p.widthB,
+      p.doorCount, p.windowCount, p.doorFace || "FRONT", p.windowFace || "FRONT");
+    this._positionSun(p.sunAngle, p.width, p.length, p.height);
 
-    const maxDim = Math.max(width, length, height);
-    this.controls.target.set(0, height / 2, 0);
+    // Camera framing needs the shelter's actual footprint extent, which
+    // depends on the shape (a round footprint is diameter-wide in every
+    // direction; an L-shape's Z extent is widthA+lengthB, not just width).
+    let extentX = p.width, extentZ = p.length;
+    if (isRound) { extentX = extentZ = p.diameter; }
+    else if (isLShape) { extentX = p.lengthA; extentZ = (p.widthA || 4) + (p.lengthB || 3); }
+    const maxDim = Math.max(extentX, extentZ, p.height);
+    this.controls.target.set(0, p.height / 2, 0);
     if (!this._cameraFramed) { this._frameCamera(maxDim); this._cameraFramed = true; }
   }
 
@@ -573,20 +602,92 @@ export class Shelter3D {
     this.renderer.dispose();
   }
 
-  // ---- internals -----------------------------------------------------------
+  // ---- internals: shelter geometry ------------------------------------------
 
-  _rebuildBox(width, length, height) {
-    this.wallMesh.geometry.dispose();
-    this.wallMesh.geometry = new THREE.BoxGeometry(width, height, length);
-    this.wallMesh.position.set(0, height / 2, 0); // sits on the ground plane, not centred through it
+  _clearWallGroup() {
+    while (this.wallGroup.children.length) {
+      const child = this.wallGroup.children.pop();
+      child.geometry.dispose();
+    }
   }
 
-  // Places a plane of size (w, h) at height y, at position `along` measured
-  // from the centre of whichever wall `face` maps to (FRONT/BACK run along
-  // X — span = width; LEFT/RIGHT run along Z — span = length, with the
-  // plane rotated 90° about Y so it faces outward along ±X instead of the
-  // default ±Z). Offsets a hair proud of the wall surface to avoid z-fighting.
-  _placeOnFace(material, w, h, y, face, along, width, length) {
+  _rebuildGeometry(shape, width, length, height, diameter, lengthA, widthA, lengthB, widthB) {
+    this._clearWallGroup();
+    if (shape === "CIRCULAR" || shape === "SEMI_CIRCULAR") {
+      this._addCylinder(diameter, height);
+    } else if (shape === "DOME") {
+      this._addCylinder(diameter, height);
+      this._addDomeCap(diameter, height);
+    } else if (shape === "L_SHAPE") {
+      this._addLShapeExtrusion(lengthA, widthA, lengthB, widthB, height);
+    } else { // RECTANGULAR / SQUARE / CUSTOM
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, length), this.wallMaterial);
+      mesh.position.set(0, height / 2, 0); // sits on the ground plane, not centred through it
+      this.wallGroup.add(mesh);
+    }
+  }
+
+  // Flat-roofed cylinder — matches engine.js's computeGeometry(), which
+  // gives CIRCULAR and SEMI_CIRCULAR the same floor/roof-area formulas
+  // (a true half-circle footprint isn't actually modeled anywhere yet, so
+  // this view doesn't invent one either — both render as a full drum).
+  _addCylinder(diameter, height) {
+    const r = (diameter || 5) / 2;
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, height, 32), this.wallMaterial);
+    mesh.position.set(0, height / 2, 0);
+    this.wallGroup.add(mesh);
+  }
+
+  // A hemispherical cap sitting on top of the cylinder body — engine.js
+  // gives DOME the same floor/volume as a plain cylinder of the same
+  // height, only the roof *surface area* differs (2*pi*r^2, i.e. a
+  // hemisphere) — this visual matches that: straight walls up to `height`,
+  // domed only above it, not a full igloo-style hemisphere from the ground.
+  _addDomeCap(diameter, height) {
+    const r = (diameter || 5) / 2;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), this.wallMaterial);
+    cap.position.set(0, height, 0);
+    this.wallGroup.add(cap);
+  }
+
+  // Extrudes the actual L-tromino footprint engine.js computes (wing A's
+  // full-width front strip + wing B's partial-width back strip on the left)
+  // up to `height` — replacing the bounding-box approximation used for
+  // every other shape. wB is clamped to lengthA, mirroring validator.js's
+  // "Wing B's width must be ≤ Wing A's length" rule.
+  _addLShapeExtrusion(lengthA, widthA, lengthB, widthB, height) {
+    const lA = lengthA || 4, wA = widthA || 4, lB = lengthB || 3;
+    const wB = Math.min(widthB || 3, lA);
+    const overallW = wA + lB;
+    // World-space (X, Z) outline, front = -Z (matching every other shape's
+    // door/window convention): front-left -> front-right -> wing A's back-
+    // right -> step in to wing B -> wing B's back-left -> back to front-left.
+    const outline = [
+      [-lA / 2, -overallW / 2], [lA / 2, -overallW / 2], [lA / 2, -overallW / 2 + wA],
+      [-lA / 2 + wB, -overallW / 2 + wA], [-lA / 2 + wB, overallW / 2], [-lA / 2, overallW / 2]
+    ];
+    // ExtrudeGeometry extrudes a Shape (in its own local X/Y plane) along
+    // +Z by `depth`; rotateX(-90deg) then remaps that to world (X, height,
+    // Z) as (x, z, -y) — so shape.y must be -worldZ for the final mesh to
+    // land at the world Z coordinates above.
+    const shape = new THREE.Shape();
+    shape.moveTo(outline[0][0], -outline[0][1]);
+    for (let i = 1; i < outline.length; i++) shape.lineTo(outline[i][0], -outline[i][1]);
+    shape.closePath();
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+    geometry.rotateX(-Math.PI / 2);
+    this.wallGroup.add(new THREE.Mesh(geometry, this.wallMaterial));
+  }
+
+  // ---- internals: openings -------------------------------------------------
+
+  // Places a plane of size (w,h) at height y on a rectangular wall, at
+  // position `along` measured from the centre of whichever wall `face`
+  // maps to (FRONT/BACK run along X — span = width; LEFT/RIGHT run along Z
+  // — span = length, with the plane rotated 90 deg about Y so it faces
+  // outward along +/-X instead of the default +/-Z). Offsets a hair proud
+  // of the wall surface to avoid z-fighting.
+  _placeOnFaceBox(material, w, h, y, face, along, width, length) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
     if (face === "BACK") {
       mesh.position.set(along, y, length / 2 + 0.02);
@@ -602,18 +703,76 @@ export class Shelter3D {
     this.openingsGroup.add(mesh);
   }
 
+  // Same idea, but "along" is an arc-length offset (metres) converted to an
+  // angle (angle = along / r) and wrapped around the cylinder at that face's
+  // angle (FRONT=0, RIGHT=90, BACK=180, LEFT=270 — matching ui-1.js's
+  // edgeOf()), with the plane rotated tangent to the curve at that point.
+  _placeOnFaceRound(material, w, h, y, face, along, r) {
+    const faceAngleRad = THREE.MathUtils.degToRad(FACE_ANGLE_DEG[face] ?? 0);
+    const theta = faceAngleRad + along / r;
+    const rOut = r + 0.02;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+    mesh.rotation.y = theta;
+    mesh.position.set(rOut * Math.sin(theta), y, -rOut * Math.cos(theta));
+    this.openingsGroup.add(mesh);
+  }
+
+  // Maps FRONT/BACK/LEFT/RIGHT onto the L-tromino's actual edges: FRONT is
+  // wing A's full-width front edge; BACK is wing B's (narrower) back edge;
+  // LEFT is the one continuous full-depth wall both wings share; RIGHT is
+  // wing A's edge only, since wing B doesn't reach that far right. The two
+  // inner "step" edges of the L aren't reachable from any of the four
+  // labels — a deliberate simplification, matching how engine.js already
+  // treats the whole L-shaped wall as a single undifferentiated face.
+  _placeOnFaceLShape(material, w, h, y, face, along, lengthA, widthA, lengthB, widthB) {
+    const lA = lengthA || 4, wA = widthA || 4, lB = lengthB || 3;
+    const wB = Math.min(widthB || 3, lA);
+    const overallW = wA + lB;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+    if (face === "BACK") {
+      mesh.position.set(-lA / 2 + wB / 2 + along, y, overallW / 2 + 0.02);
+    } else if (face === "LEFT") {
+      mesh.rotation.y = Math.PI / 2;
+      mesh.position.set(-lA / 2 - 0.02, y, along);
+    } else if (face === "RIGHT") {
+      mesh.rotation.y = Math.PI / 2;
+      mesh.position.set(lA / 2 + 0.02, y, -overallW / 2 + wA / 2 + along);
+    } else { // FRONT
+      mesh.position.set(along, y, -overallW / 2 - 0.02);
+    }
+    this.openingsGroup.add(mesh);
+  }
+
   // Doors and windows each use the same FRONT/BACK/LEFT/RIGHT face as the
   // rest of the app (the Shelter Designer's "Door face"/"Window face"
   // controls and the 2D preview). When they land on the same wall, they
   // share one evenly-spaced slot layout (doors first, then windows) so they
-  // can't overlap; otherwise each is spaced independently along its own wall.
-  _rebuildOpenings(width, length, height, doorCount, windowCount, doorFace, windowFace) {
+  // can't overlap; otherwise each is spaced independently along its own
+  // wall. The span/placement functions swap per shape so the same slot
+  // math works whether "along" a wall means a straight line, an arc, or an
+  // L-tromino edge.
+  _rebuildOpenings(shape, width, length, height, diameter, lengthA, widthA, lengthB, widthB, doorCount, windowCount, doorFace, windowFace) {
     while (this.openingsGroup.children.length) {
       const child = this.openingsGroup.children.pop();
       child.geometry.dispose();
     }
 
-    const spanOf = (face) => (face === "LEFT" || face === "RIGHT") ? length : width;
+    let spanOf, place;
+    if (shape === "CIRCULAR" || shape === "DOME" || shape === "SEMI_CIRCULAR") {
+      const r = (diameter || 5) / 2;
+      spanOf = () => r * THREE.MathUtils.degToRad(ROUND_ARC_DEG);
+      place = (material, w, h, y, face, along) => this._placeOnFaceRound(material, w, h, y, face, along, r);
+    } else if (shape === "L_SHAPE") {
+      const wA = widthA || 4, lB = lengthB || 3, lA = lengthA || 4;
+      const wB = Math.min(widthB || 3, lA);
+      const spans = { FRONT: lA, BACK: wB, LEFT: wA + lB, RIGHT: wA };
+      spanOf = (face) => spans[face] ?? lA;
+      place = (material, w, h, y, face, along) => this._placeOnFaceLShape(material, w, h, y, face, along, lengthA, widthA, lengthB, widthB);
+    } else {
+      spanOf = (face) => (face === "LEFT" || face === "RIGHT") ? length : width;
+      place = (material, w, h, y, face, along) => this._placeOnFaceBox(material, w, h, y, face, along, width, length);
+    }
+
     const doorH = Math.min(DOOR_SIZE.h, height * 0.85), doorY = doorH / 2;
     const winH = Math.min(WINDOW_SIZE.h, height * 0.35), winY = height * 0.55;
 
@@ -625,10 +784,10 @@ export class Shelter3D {
       const winW = Math.min(WINDOW_SIZE.w, slotW * 0.7);
       let slot = 1;
       for (let i = 0; i < doorCount; i++, slot++) {
-        this._placeOnFace(this.doorMaterial, doorW, doorH, doorY, doorFace, -span / 2 + slotW * slot, width, length);
+        place(this.doorMaterial, doorW, doorH, doorY, doorFace, -span / 2 + slotW * slot);
       }
       for (let i = 0; i < windowCount; i++, slot++) {
-        this._placeOnFace(this.windowMaterial, winW, winH, winY, windowFace, -span / 2 + slotW * slot, width, length);
+        place(this.windowMaterial, winW, winH, winY, windowFace, -span / 2 + slotW * slot);
       }
       return;
     }
@@ -638,7 +797,7 @@ export class Shelter3D {
       const slotW = span / (doorCount + 1);
       const doorW = Math.min(DOOR_SIZE.w, slotW * 0.7);
       for (let i = 1; i <= doorCount; i++) {
-        this._placeOnFace(this.doorMaterial, doorW, doorH, doorY, doorFace, -span / 2 + slotW * i, width, length);
+        place(this.doorMaterial, doorW, doorH, doorY, doorFace, -span / 2 + slotW * i);
       }
     }
 
@@ -647,7 +806,7 @@ export class Shelter3D {
       const slotW = span / (windowCount + 1);
       const winW = Math.min(WINDOW_SIZE.w, slotW * 0.7);
       for (let i = 1; i <= windowCount; i++) {
-        this._placeOnFace(this.windowMaterial, winW, winH, winY, windowFace, -span / 2 + slotW * i, width, length);
+        place(this.windowMaterial, winW, winH, winY, windowFace, -span / 2 + slotW * i);
       }
     }
   }
@@ -3936,10 +4095,10 @@ window.UI = window.UI || {};
             <div id="preview2d"></div>
           </div>
           <div class="card" style="margin-top:16px;">
-            <h3>3D Preview <span class="tag tag-demo">illustrative — box approximation</span></h3>
+            <h3>3D Preview <span class="tag tag-demo">illustrative</span></h3>
             <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:8px; cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
-            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and windows are shown on the "Door face"/"Window face" walls set below — window orientation also drives the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape) ? "Shown as a bounding box — this view doesn't yet model curved or L-shaped footprints." : ""}</p>
+            <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and windows are shown on the "Door face"/"Window face" walls set below — window orientation also drives the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>Derived Geometry <span class="tag tag-model">calculated</span></h3>
@@ -3987,9 +4146,11 @@ window.UI = window.UI || {};
 
     drawShelterPreview(U.qs("#preview2d", root), d, geom);
 
-    // 3D preview: box approximation using the shape's overall bounding
-    // dimensions (geom.L / geom.W already cover this for every shape,
-    // including circular/L — see the note rendered above the canvas).
+    // 3D preview: renders shape-specific geometry (box/cylinder/dome/L-shape
+    // extrusion — see shelter3d.js) matching engine.js's own computeGeometry()
+    // semantics for each shape. geom.L/geom.W cover the bounding box for
+    // every shape; diameter and the L-shape wing dimensions are pulled
+    // straight off `design` since computeGeometry() doesn't expose them.
     // Loaded as an ES module (see index.html's import map), which can
     // still be mid-fetch the first time this page renders — retried a
     // few times before giving up gracefully rather than blocking on it.
@@ -3997,7 +4158,11 @@ window.UI = window.UI || {};
       if (!currentShelter3D) return;
       const wallMatId = design.wall && design.wall.materialId;
       currentShelter3D.update({
+        shape: design.shape || "RECTANGULAR",
         width: g.L, length: g.W || g.L, height: design.height || 3,
+        diameter: design.diameter || g.diameter || 5,
+        lengthA: design.lengthA || 4, widthA: design.widthA || 4,
+        lengthB: design.lengthB || 3, widthB: design.widthB || 3,
         doorCount: (design.doors || []).reduce((s, dr) => s + (dr.count || 0), 0),
         doorFace: (design.doors && design.doors[0] && design.doors[0].orientation) || "FRONT",
         windowCount: (design.windows || []).reduce((s, w) => s + (w.count || 0), 0),
