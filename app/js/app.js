@@ -174,12 +174,25 @@ window.APP = (function () {
     // badge instead of leaving it wrong until the next navigation.
     setTimeout(updateOnlineStatus, 1500);
 
-    // Mobile off-canvas sidebar (hamburger in the topbar, only visible <=860px).
+    // The hamburger in the topbar drives two different, non-overlapping
+    // behaviors from the one button, switched purely by CSS media query
+    // (see styles.css) rather than a window-width check here: <=860px it
+    // opens/closes an off-canvas drawer (starts hidden); >860px it
+    // collapses the normally-always-visible sidebar in place, for more
+    // content width on a desktop window. The desktop collapse preference
+    // persists across reloads, same as theme/units.
+    const appShellEl = document.querySelector(".app-shell");
     const sidebarEl = document.getElementById("sidebar");
     const backdropEl = document.getElementById("sidebarBackdrop");
     const closeSidebar = () => { sidebarEl.classList.remove("open"); backdropEl.classList.remove("open"); };
+    const SIDEBAR_COLLAPSED_KEY = "areatherm_sidebar_collapsed";
+    try {
+      if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") appShellEl.classList.add("sidebar-collapsed");
+    } catch (e) { /* storage unavailable — default expanded */ }
     document.getElementById("menuToggle").addEventListener("click", () => {
       sidebarEl.classList.toggle("open"); backdropEl.classList.toggle("open");
+      const collapsed = appShellEl.classList.toggle("sidebar-collapsed");
+      try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch (e) { /* storage unavailable */ }
     });
     document.getElementById("sidebarClose").addEventListener("click", closeSidebar);
     backdropEl.addEventListener("click", closeSidebar);

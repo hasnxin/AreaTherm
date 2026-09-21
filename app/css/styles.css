@@ -59,6 +59,7 @@ button{font-family:inherit; cursor:pointer;}
   width:230px; background:linear-gradient(180deg,var(--navy-900),var(--navy-800));
   color:#dce8f0; display:flex; flex-direction:column; flex-shrink:0; padding:18px 0;
   position:fixed; top:0; left:0; height:100vh; z-index:10;
+  transition:transform .2s ease;
 }
 .brand{display:flex; align-items:center; gap:10px; padding:0 18px 18px; border-bottom:1px solid rgba(255,255,255,.08); position:relative;}
 .sidebar-close{display:none; position:absolute; right:14px; top:-2px; background:none; border:none; color:#b9cad8; font-size:18px; padding:4px;}
@@ -78,13 +79,24 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 .version-tag{font-family:var(--mono); font-size:10px; color:#63798c;}
 
 /* Main content */
-.content{margin-left:230px; min-width:0; display:flex; flex-direction:column; min-height:100vh;}
+.content{margin-left:230px; min-width:0; display:flex; flex-direction:column; min-height:100vh; transition:margin-left .2s ease;}
 .topbar{display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:var(--panel); border-bottom:1px solid var(--border); gap:12px;}
 .topbar-left{display:flex; align-items:center; gap:10px; min-width:0;}
-.menu-toggle{display:none; background:none; border:none; font-size:20px; line-height:1; color:var(--text); padding:4px 6px; border-radius:6px; flex-shrink:0;}
+/* Always visible (not just <=860px) — on desktop it collapses the sidebar
+   in place for more content width, via .app-shell.sidebar-collapsed below;
+   on mobile it opens/closes the off-canvas drawer, via .sidebar.open. */
+.menu-toggle{display:inline-flex; align-items:center; justify-content:center; background:none; border:none; font-size:20px; line-height:1; color:var(--text); padding:4px 6px; border-radius:6px; flex-shrink:0;}
 .menu-toggle:hover{background:var(--bg);}
+/* Desktop sidebar collapse — a separate, opposite-polarity toggle from the
+   mobile drawer below (this one starts open and collapses; that one starts
+   closed and opens), so both live on the same button without JS needing to
+   know the viewport width: only the media query that matches has any
+   effect, so toggling both classes together on every click is safe. */
+@media (min-width:861px){
+  .app-shell.sidebar-collapsed .sidebar{transform:translateX(-100%);}
+  .app-shell.sidebar-collapsed .content{margin-left:0;}
+}
 .sidebar-backdrop{display:none; position:fixed; inset:0; background:rgba(8,14,20,.5); z-index:40;}
-.sidebar-backdrop.open{display:block;}
 .topbar-project{display:flex; flex-direction:column; min-width:0;}
 .topbar-label{font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint);}
 .topbar-value{font-weight:600; font-size:14px;}
@@ -269,10 +281,10 @@ td.num{font-family:var(--mono); text-align:right;}
    button in the topbar, closed by tapping the backdrop, a nav link, or
    the ✕ in the drawer header. */
 @media (max-width:860px){
-  .sidebar{transform:translateX(-100%); transition:transform .2s ease; z-index:50;}
+  .sidebar{transform:translateX(-100%); z-index:50;}
   .sidebar.open{transform:translateX(0); box-shadow:0 0 40px rgba(0,0,0,.35);}
+  .sidebar-backdrop.open{display:block;}
   .content{margin-left:0;}
-  .menu-toggle{display:inline-flex; align-items:center; justify-content:center;}
   .sidebar-close{display:block;}
   .view{padding:16px 16px 50px;}
   .topbar{padding:10px 14px;}
