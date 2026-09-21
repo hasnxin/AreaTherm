@@ -31,9 +31,11 @@
   --spacing-xs:4px; --spacing-sm:8px; --spacing-md:16px; --spacing-lg:24px; --spacing-xl:32px;
   /* Type scale */
   --text-heading:24px; --text-subheading:18px; --text-body:14px; --line-height:1.5;
-  /* Elevation */
-  --shadow-sm:0 1px 3px rgba(0,0,0,.12); --shadow-md:0 2px 8px rgba(0,0,0,.15);
-  --radius-card:4px; --radius-btn:0px;
+  /* Elevation — soft, layered "floating card" shadow (visual-polish pass,
+     inspired by Notus React / AdminKit reference dashboards) */
+  --shadow-sm:0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
+  --shadow-md:0 2px 8px rgba(0,0,0,.15);
+  --radius-card:12px; --radius-btn:8px;
 }
 /* Dark mode: toggled via Settings -> Appearance (sets documentElement's
    data-theme attribute). Only the light-chrome variables flip — the sidebar
@@ -81,15 +83,15 @@ button{font-family:inherit; cursor:pointer;}
 .brand-name{font-weight:700; font-size:15px; color:#fff;}
 .brand-sub{font-size:10.5px; color:#8ea9bc; letter-spacing:.03em;}
 .nav{display:flex; flex-direction:column; padding:14px 10px; gap:2px; flex:1; overflow-y:auto;}
-.nav a{display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:6px; font-size:13px; color:#b9cad8; transition:background .12s;}
+.nav a{display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:8px; font-size:13px; color:#b9cad8; transition:background .12s;}
 .nav-icon{font-size:14px; line-height:1; flex-shrink:0; width:16px; text-align:center;}
 .nav a:hover{background:rgba(255,255,255,.06); color:#fff;}
 .nav a.active{background:var(--accent); color:#fff; font-weight:600;}
 .nav a.nav-advanced-only{display:none;}
 body.mode-advanced .nav a.nav-advanced-only{display:block;}
 .sidebar-footer{padding:14px 18px 0; border-top:1px solid rgba(255,255,255,.08); margin-top:8px;}
-.mode-toggle{display:flex; background:rgba(255,255,255,.08); border-radius:6px; padding:2px; margin-bottom:10px;}
-.mode-btn{flex:1; background:transparent; border:none; color:#b9cad8; font-size:11.5px; padding:6px 0; border-radius:5px;}
+.mode-toggle{display:flex; background:rgba(255,255,255,.08); border-radius:8px; padding:2px; margin-bottom:10px;}
+.mode-btn{flex:1; background:transparent; border:none; color:#b9cad8; font-size:11.5px; padding:6px 0; border-radius:6px;}
 .mode-btn.active{background:var(--accent); color:#fff;}
 .version-tag{font-family:var(--mono); font-size:10px; color:#63798c;}
 
@@ -151,10 +153,24 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
 .card-tight{padding:12px 14px;}
 /* Self-sufficient even without the .card class alongside it (both patterns
    exist in the markup today) — a KPI tile always gets proper chrome. */
-.metric-card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm);}
+.metric-card{position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm);}
 .metric-card .metric-label{font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px;}
 .metric-card .metric-value{font-size:26px; font-weight:700; font-family:var(--mono);}
 .metric-card .metric-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
+
+/* Headline-KPI icon badge — Dashboard + Simulation's top summary cards only
+   (see styles.css header note / plan). Pastel circle + emoji, reusing the
+   existing tag-color token pairs so it's dark-mode-safe with zero new vars. */
+.metric-icon{
+  position:absolute; top:14px; right:14px;
+  width:38px; height:38px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:17px; line-height:1;
+}
+.metric-icon-sun{background:var(--tag-demo-bg); color:var(--tag-demo-fg);}
+.metric-icon-temp{background:var(--tag-model-bg); color:var(--tag-model-fg);}
+.metric-icon-comfort{background:var(--tag-input-bg); color:var(--tag-input-fg);}
+.metric-icon-heat{background:var(--error-bg); color:var(--bad);}
 
 /* Status callouts (replace ad-hoc inline styles so dark mode can reach them) */
 .callout-warn{background:var(--tag-demo-bg); border-color:var(--data-illus-border);}
@@ -287,7 +303,7 @@ td.num{font-family:var(--mono); text-align:right;}
 
 /* Guided setup wizard */
 .wizard-steps{display:flex; gap:6px; margin-bottom:20px; flex-wrap:wrap;}
-.wizard-step{flex:1; min-width:110px; text-align:center; padding:10px 8px; border-radius:8px; background:var(--panel); border:1px solid var(--border); font-size:11.5px; font-weight:700; color:var(--text-faint);}
+.wizard-step{flex:1; min-width:110px; text-align:center; padding:10px 8px; border-radius:10px; background:var(--panel); border:1px solid var(--border); font-size:11.5px; font-weight:700; color:var(--text-faint);}
 .wizard-step .num{display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--border); color:#fff; font-size:10.5px; margin-right:5px;}
 .wizard-step.active{border-color:var(--accent); color:var(--accent); background:var(--active-tint);}
 .wizard-step.active .num{background:var(--accent);}

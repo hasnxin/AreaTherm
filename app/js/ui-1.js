@@ -52,16 +52,19 @@ window.UI = window.UI || {};
           <div id="dashGauge"></div>
         </div>
         <div class="metric-card">
+          <div class="metric-icon metric-icon-sun">☀️</div>
           <div class="metric-label">Solar Gain</div>
           <div class="metric-value" style="font-size:20px;">${result.daily.solarKwh}</div>
           <div class="metric-sub">kWh/day</div>
         </div>
         <div class="metric-card">
+          <div class="metric-icon metric-icon-heat">🔥</div>
           <div class="metric-label">Heat Loss</div>
           <div class="metric-value" style="font-size:20px;">${result.daily.totalLossKwh}</div>
           <div class="metric-sub">kWh/day</div>
         </div>
         <div class="metric-card">
+          <div class="metric-icon metric-icon-temp">🌡️</div>
           <div class="metric-label">Indoor Temp Range</div>
           <div class="metric-value" style="font-size:20px;">${result.comfort.minIndoor}–${result.comfort.maxIndoor}°C</div>
           <div class="metric-sub">Model Prediction</div>

@@ -238,10 +238,10 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
 
       ${result ? `
       <div class="grid grid-4" style="margin:16px 0;">
-        <div class="metric-card card"><div class="metric-label">Predicted Indoor Temp</div><div class="metric-value" style="font-size:18px;">${result.comfort.minIndoor} – ${result.comfort.maxIndoor} °C</div><div class="metric-sub">Model Prediction</div></div>
-        <div class="metric-card card"><div class="metric-label">Solar Heat Gain</div><div class="metric-value" style="font-size:18px;">${result.daily.solarKwh} kWh/day</div></div>
-        <div class="metric-card card"><div class="metric-label">Total Heat Loss</div><div class="metric-value" style="font-size:18px;">${result.daily.totalLossKwh} kWh/day</div></div>
-        <div class="metric-card card"><div class="metric-label">Comfort Duration</div><div class="metric-value" style="font-size:18px;">${result.comfort.comfortHoursPerDay} h/day</div></div>
+        <div class="metric-card card"><div class="metric-icon metric-icon-temp">🌡️</div><div class="metric-label">Predicted Indoor Temp</div><div class="metric-value" style="font-size:18px;">${result.comfort.minIndoor} – ${result.comfort.maxIndoor} °C</div><div class="metric-sub">Model Prediction</div></div>
+        <div class="metric-card card"><div class="metric-icon metric-icon-sun">☀️</div><div class="metric-label">Solar Heat Gain</div><div class="metric-value" style="font-size:18px;">${result.daily.solarKwh} kWh/day</div></div>
+        <div class="metric-card card"><div class="metric-icon metric-icon-heat">🔥</div><div class="metric-label">Total Heat Loss</div><div class="metric-value" style="font-size:18px;">${result.daily.totalLossKwh} kWh/day</div></div>
+        <div class="metric-card card"><div class="metric-icon metric-icon-comfort">⏱️</div><div class="metric-label">Comfort Duration</div><div class="metric-value" style="font-size:18px;">${result.comfort.comfortHoursPerDay} h/day</div></div>
       </div>
 
       <div class="card" style="margin-bottom:16px;">
