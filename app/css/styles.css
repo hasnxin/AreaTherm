@@ -118,6 +118,15 @@ button{font-family:inherit; cursor:pointer;}
 .brand-name{font-weight:700; font-size:15px; color:#fff;}
 .brand-sub{font-size:10.5px; color:#8ea9bc; letter-spacing:var(--tracking-wide);}
 .nav{display:flex; flex-direction:column; padding:14px 10px; gap:2px; flex:1; overflow-y:auto;}
+/* Nav section labels — group the workflow's own stages (Overview/Design/
+   Analysis/Output) instead of one flat 11-item list. Same small-uppercase
+   tracking already used for every other micro-label in this app. */
+.nav-group-label{
+  font-size:10px; text-transform:uppercase; letter-spacing:var(--tracking-wide);
+  color:#63798c; padding:14px 12px 4px; font-weight:600;
+}
+.nav-group-label:first-child{padding-top:2px;}
+.nav-divider{height:1px; background:rgba(255,255,255,.08); margin:8px 12px;}
 .nav a{display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:8px; font-size:13px; color:#b9cad8; transition:background .12s;}
 .nav-icon{font-size:14px; line-height:1; flex-shrink:0; width:16px; text-align:center;}
 .nav a:hover{background:rgba(255,255,255,.06); color:#fff;}
@@ -157,6 +166,21 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 .btn-accent{background:var(--accent); color:#fff; border-color:var(--accent);}
 .btn-accent:hover{background:var(--accent-bright); color:#fff;}
 .btn-sm{padding:5px 10px; font-size:11.5px;}
+@media (prefers-reduced-motion: no-preference){ .btn:active{transform:translateY(1px);} }
+.btn-accent:active{background:var(--accent-hover);}
+.btn:disabled, .btn:disabled:hover{opacity:.5; cursor:not-allowed; border-color:var(--border); color:var(--text-faint); background:var(--panel); transform:none;}
+.btn-accent:disabled, .btn-accent:disabled:hover{background:var(--border); color:var(--text-faint); border-color:var(--border);}
+
+/* Inline loading spinner for an in-flight async button — rides the same
+   btn.disabled toggle every async action already sets; JS only needs to
+   add/remove this class alongside it, no new state. */
+.btn.is-loading{color:transparent; pointer-events:none; position:relative;}
+.btn.is-loading::after{
+  content:""; position:absolute; inset:0; margin:auto; width:14px; height:14px;
+  border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%;
+}
+@media (prefers-reduced-motion: no-preference){ .btn.is-loading::after{animation:areatherm-spin .6s linear infinite;} }
+@keyframes areatherm-spin{ to{transform:rotate(360deg);} }
 
 .view{padding:22px 26px 60px; max-width:1320px;}
 @media (min-width:769px){ .card{padding:var(--spacing-lg);} }
@@ -192,6 +216,32 @@ h1{font-size:var(--text-heading); margin:0 0 4px; font-weight:700; letter-spacin
 h2{font-size:var(--text-subheading); margin:0 0 12px; font-weight:700;}
 h3{font-size:13.5px; margin:0 0 8px; text-transform:uppercase; letter-spacing:var(--tracking-wide); color:var(--text-muted);}
 .subtitle{color:var(--text-muted); font-size:13px; margin-bottom:20px; line-height:var(--line-height);}
+
+/* Page header — icon + title + subtitle, used by every page except
+   Dashboard (which keeps its hero). The icon badge reuses .metric-icon's
+   circular, neutral-surface language at a slightly larger size, so a new
+   page reads as the same design system, not a new one. */
+.page-header{display:flex; align-items:flex-start; gap:14px; margin-bottom:var(--spacing-lg);}
+.page-header-icon{
+  flex-shrink:0; width:44px; height:44px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; line-height:1;
+  background:var(--surface-elevated); border:1px solid var(--border);
+}
+.page-header-text{min-width:0; flex:1;}
+.page-header-text h1{margin-bottom:2px;}
+.page-header-text .subtitle{margin-bottom:0;}
+.page-header-actions{flex-shrink:0; display:flex; gap:8px; align-items:center; padding-top:2px;}
+@media (max-width:600px){ .page-header{gap:10px;} .page-header-icon{width:36px; height:36px; font-size:17px;} }
+
+/* In-page section-zone label — groups an information-dense page's cards
+   into labeled zones (e.g. Simulation's Prediction / Energy Balance /
+   Occupancy & Comfort) without changing what any card shows. */
+.section-label{
+  font-size:11px; text-transform:uppercase; letter-spacing:var(--tracking-wide);
+  font-weight:700; color:var(--text-faint);
+  margin:28px 0 10px; padding-bottom:6px; border-bottom:1px solid var(--border);
+}
 /* Prose/body copy gets the spec's 1.5x readability line-height; compact UI
    chrome (buttons, nav, tables, tags) keeps its existing tighter spacing —
    applying 1.5 globally would visibly inflate the height of every single-line
@@ -241,11 +291,51 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
   background:var(--surface-elevated); color:var(--text-muted);
 }
 
+/* Thermal Comfort Score card's history trend + Recent Simulations list —
+   both read STORE.simulationHistory, already computed/stored, just given a
+   visual trend/hierarchy instead of plain text. */
+.sparkline-svg{width:100%; height:28px; display:block; margin-top:6px;}
+.sparkline-line{stroke:var(--accent); stroke-width:2; stroke-linecap:round; stroke-linejoin:round;}
+.kpi-link{display:inline-block; margin-top:4px; font-size:11.5px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:var(--tracking-wide);}
+.kpi-link:hover{color:var(--accent-hover);}
+
+.history-row{display:flex; align-items:center; gap:12px;}
+.history-row-badge{
+  flex-shrink:0; width:34px; height:34px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11.5px; font-weight:700; font-variant-numeric:tabular-nums;
+  color:#fff;
+}
+.history-row-badge.good{background:var(--good);}
+.history-row-badge.warn{background:var(--warn);}
+.history-row-badge.bad{background:var(--bad);}
+.history-row-text{min-width:0; flex:1;}
+.history-row-title{font-size:12.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.history-row-sub{font-size:11.5px; color:var(--text-faint); margin-top:1px;}
+
 /* Status callouts (replace ad-hoc inline styles so dark mode can reach them) */
 .callout-warn{background:var(--tag-demo-bg); border-color:var(--data-illus-border);}
 .callout-warn h3{color:var(--tag-demo-fg); margin:0 0 6px; text-transform:none; letter-spacing:normal; font-size:14px;}
 .callout-error{border-color:var(--bad); background:var(--error-bg);}
 .callout-error h3{color:var(--bad); margin:0 0 6px; text-transform:none; letter-spacing:normal; font-size:14px;}
+
+/* Inline error text next to an async status line (Location page's fetch
+   status etc.) — an alternative to .callout-error for a one-line message
+   that doesn't warrant a full callout box. */
+.hint.status-error{color:var(--bad);}
+
+/* Shared empty-state — replaces a bare <p class="hint"> wherever a page has
+   nothing to show yet. Reuses .page-header-icon's circular-badge language
+   (larger, centered) so it reads as the same design system. */
+.empty-state{text-align:center; padding:28px 20px; color:var(--text-muted);}
+.empty-state-icon{
+  width:44px; height:44px; border-radius:50%; margin:0 auto 12px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; line-height:1;
+  background:var(--surface-elevated); border:1px solid var(--border);
+}
+.empty-state p{margin:0; font-size:13px; line-height:var(--line-height);}
+.empty-state-cta{margin-top:10px;}
 
 /* Forms */
 .form-row{display:flex; flex-direction:column; gap:5px; margin-bottom:12px;}
@@ -355,20 +445,22 @@ td.num{font-family:var(--mono); text-align:right; font-variant-numeric:tabular-n
 .data-badge.real{background:var(--data-real-bg); color:var(--data-real-fg); border:1px solid var(--data-real-border);}
 .data-badge.illustrative{background:var(--data-illus-bg); color:var(--data-illus-fg); border:1px solid var(--data-illus-border);}
 
-/* Dashboard — minimized hamburger toggle for Explore the Platform */
-.hamburger-toggle{display:flex; align-items:center; gap:8px; background:none; border:none; color:var(--accent); font-weight:700; font-size:13px; padding:10px 0; cursor:pointer;}
-.hamburger-toggle:hover{color:var(--accent-bright);}
-.hamburger-icon{font-size:15px; line-height:1;}
-.hamburger-toggle.open{color:var(--text);}
-.explore-body{display:none;}
-.explore-body.open{display:block; margin-top:4px;}
-
-/* Dashboard — explore-the-platform tiles */
+/* Dashboard — explore-the-platform tiles. Always visible now (no more
+   click-to-reveal toggle — primary navigation shouldn't need discovering).
+   Two layouts share the same tile classes: a 3-up grid (unused today but
+   kept for any future full-width usage) and a stacked single-column list
+   (.nav-tile-row), currently used on the Dashboard where tiles sit in a
+   half-width column next to Recent Simulations. */
 .nav-tile{display:block; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm); transition:border-color .15s, box-shadow .15s, transform .15s;}
 .nav-tile:hover{border-color:var(--accent); box-shadow:0 2px 10px rgba(19,175,192,.15); transform:translateY(-1px); background:var(--surface-hover);}
+@media (prefers-reduced-motion: no-preference){ .nav-tile:active{transform:translateY(0);} }
 .nav-tile-icon{font-size:20px; margin-bottom:8px;}
 .nav-tile-title{font-size:13.5px; font-weight:700; color:var(--text); margin-bottom:4px;}
 .nav-tile-desc{font-size:12px; color:var(--text-muted); line-height:1.45;}
+.explore-tile-list{display:flex; flex-direction:column; gap:8px;}
+.nav-tile-row{display:flex; align-items:flex-start; gap:12px; padding:10px 12px;}
+.nav-tile-row .nav-tile-icon{margin-bottom:0; flex-shrink:0; width:22px; text-align:center;}
+.nav-tile-row .nav-tile-title{margin-bottom:2px;}
 
 /* Guided setup wizard */
 .wizard-steps{display:flex; gap:6px; margin-bottom:20px; flex-wrap:wrap;}
@@ -380,7 +472,9 @@ td.num{font-family:var(--mono); text-align:right; font-variant-numeric:tabular-n
 .wizard-step.done .num{background:var(--good);}
 .wizard-nav{display:flex; justify-content:space-between; margin-top:18px;}
 .preset-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
-.preset-btn{border:1.5px solid var(--border); background:var(--panel); padding:10px 14px; border-radius:var(--radius-btn); font-size:12.5px; font-weight:600; text-align:left; min-width:150px;}
+.preset-btn{border:1.5px solid var(--border); background:var(--panel); padding:10px 14px; border-radius:var(--radius-btn); font-size:12.5px; font-weight:600; text-align:left; min-width:150px; transition:border-color .15s, background .15s;}
+.preset-btn:hover{border-color:var(--accent); background:var(--surface-hover);}
+@media (prefers-reduced-motion: no-preference){ .preset-btn:active{transform:translateY(1px);} }
 .preset-btn .t{display:block; font-weight:700; color:var(--text);}
 .preset-btn .s{display:block; font-size:11px; color:var(--text-faint); font-weight:400; margin-top:2px;}
 .preset-btn.selected{border-color:var(--accent); background:var(--active-tint);}

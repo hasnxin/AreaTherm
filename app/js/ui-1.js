@@ -44,12 +44,16 @@ window.UI = window.UI || {};
   // current design doing" without navigating away from the hub. Reads
   // fields already computed by ENGINE.runSimulation and stored via
   // STORE.recordSimulation — no new calculation.
-  function dashboardSummaryHtml(result) {
+  function dashboardSummaryHtml(result, hist) {
+    // Last up-to-8 history scores, oldest→newest — same array recentDesignsHtml
+    // already reads, no new store access. Sparkline only draws with >=2 points.
+    const trend = (hist || []).slice(0, 8).reverse().map(h => h.thermalComfortScore);
     return `
       <div class="grid grid-4" style="margin:18px 0;">
         <div class="metric-card" style="text-align:center;">
           <div class="metric-label">Thermal Comfort Score</div>
           <div id="dashGauge"></div>
+          ${trend.length >= 2 ? `<div id="dashScoreTrend"></div>` : ""}
         </div>
         <div class="metric-card">
           <div class="metric-icon metric-icon-sun">☀️</div>
@@ -69,7 +73,8 @@ window.UI = window.UI || {};
           <div class="metric-value" style="font-size:20px;">${result.comfort.minIndoor}–${result.comfort.maxIndoor}°C</div>
           <div class="metric-sub">Model Prediction</div>
         </div>
-      </div>`;
+      </div>
+      <a href="#/reports" class="kpi-link">View full report →</a>`;
   }
 
   // Lightweight recent-runs list (spec's "Recent Designs carousel", scoped
@@ -78,14 +83,18 @@ window.UI = window.UI || {};
   function recentDesignsHtml(hist) {
     const recent = hist.slice(0, 3);
     if (!recent.length) return "";
+    const scoreClass = score => score >= 80 ? "good" : score >= 60 ? "warn" : "bad";
     return `
       <div class="card" style="margin:18px 0;">
         <h3 style="margin-bottom:10px;">Recent Simulations</h3>
-        <div class="checklist" style="gap:10px;">
-          ${recent.map(h => `<li style="display:flex; justify-content:space-between; gap:10px;">
-            <span>${U.esc(h.designName || "Shelter design")} — ${U.esc(h.locationLabel || "—")}</span>
-            <span><b>${h.thermalComfortScore}/100</b> · ${new Date(h.ts).toLocaleDateString()}</span>
-          </li>`).join("")}
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          ${recent.map(h => `<div class="history-row">
+            <div class="history-row-badge ${scoreClass(h.thermalComfortScore)}">${h.thermalComfortScore}</div>
+            <div class="history-row-text">
+              <div class="history-row-title">${U.esc(h.designName || "Shelter design")}</div>
+              <div class="history-row-sub">${U.esc(h.locationLabel || "—")} · ${new Date(h.ts).toLocaleDateString()}</div>
+            </div>
+          </div>`).join("")}
         </div>
       </div>`;
   }
@@ -97,40 +106,36 @@ window.UI = window.UI || {};
     root.innerHTML = `
       ${heroHtml(hist.length > 0)}
 
-      ${s.lastSimulationResult ? dashboardSummaryHtml(s.lastSimulationResult) : ""}
+      ${s.lastSimulationResult ? dashboardSummaryHtml(s.lastSimulationResult, hist) : ""}
 
       ${s.location ? `<div class="card" style="margin:18px 0;">
           ${U.badge(s.climateSource)} <span class="hint">for ${U.esc(s.location.label)}</span>
           ${s.location.solarDataSource ? `<div class="hint" style="margin-top:6px;">Solar potential: <b>${s.location.annualSolarKwhM2Yr} kWh/m²/yr</b> · Avg. temp: <b>${s.location.avgTempCAnnual}°C</b> — NASA POWER (${U.esc(s.location.solarDataSource.period)})</div>` : ""}
         </div>` : ""}
 
-      ${recentDesignsHtml(hist)}
-
-      <button class="hamburger-toggle" id="exploreToggle" aria-expanded="false" style="margin-top:${s.location ? "0" : "22px"};">
-        <span class="hamburger-icon">☰</span> Explore the Platform
-      </button>
-      <div class="explore-body" id="exploreBody">
-        <p class="subtitle">Every screen, one click away — pick a starting point.</p>
-        <div class="grid grid-3">
-          ${EXPLORE_TILES.map(t => `
-            <a class="nav-tile" href="#/${t.route}" data-route="${t.route}">
-              <div class="nav-tile-icon">${t.icon}</div>
-              <div class="nav-tile-title">${U.esc(t.title)}</div>
-              <div class="nav-tile-desc">${U.esc(t.desc)}</div>
-            </a>`).join("")}
+      <div class="grid grid-2" style="margin-top:18px; align-items:start;">
+        <div>${recentDesignsHtml(hist) || `<div class="card"><h3 style="margin-bottom:6px;">Recent Simulations</h3>${U.emptyState("🗒️", "Run a simulation to start building a history here.")}</div>`}</div>
+        <div class="card">
+          <h3 style="margin-bottom:2px;">Explore the Platform</h3>
+          <p class="hint" style="margin-bottom:10px;">Every screen, one click away.</p>
+          <div class="explore-tile-list">
+            ${EXPLORE_TILES.map(t => `
+              <a class="nav-tile nav-tile-row" href="#/${t.route}" data-route="${t.route}">
+                <div class="nav-tile-icon">${t.icon}</div>
+                <div><div class="nav-tile-title">${U.esc(t.title)}</div><div class="nav-tile-desc">${U.esc(t.desc)}</div></div>
+              </a>`).join("")}
+          </div>
         </div>
       </div>`;
 
-    if (s.lastSimulationResult) CH.scoreGauge(U.qs("#dashGauge", root), s.lastSimulationResult.scores.thermalComfortScore);
+    if (s.lastSimulationResult) {
+      CH.scoreGauge(U.qs("#dashGauge", root), s.lastSimulationResult.scores.thermalComfortScore);
+      const trendEl = U.qs("#dashScoreTrend", root);
+      if (trendEl) CH.sparkline(trendEl, hist.slice(0, 8).reverse().map(h => h.thermalComfortScore));
+    }
 
     U.on("#heroDemoBtn", "click", () => window.APP.runLiveDemo(), root);
     U.on("#heroWorkflowBtn", "click", () => window.APP.navigate("guided"), root);
-    U.on("#exploreToggle", "click", () => {
-      const btn = U.qs("#exploreToggle", root), body = U.qs("#exploreBody", root);
-      const open = body.classList.toggle("open");
-      btn.classList.toggle("open", open);
-      btn.setAttribute("aria-expanded", String(open));
-    }, root);
     U.qsa(".nav-tile", root).forEach(el => {
       el.addEventListener("click", (e) => {
         e.preventDefault();
@@ -175,7 +180,7 @@ window.UI = window.UI || {};
   function renderClimateCards(root, s, season) {
     const box = U.qs("#climateSummaryBox", root);
     if (!box) return;
-    if (!season) { box.innerHTML = `<p class="subtitle">No climate loaded yet.</p>`; return; }
+    if (!season) { box.innerHTML = U.emptyState("🌤️", "No climate loaded yet."); return; }
     const loc = s.location;
     const nasa = loc && loc.solarDataSource;
     const seasonKeys = loc ? Object.keys(loc.seasons) : [];
@@ -307,8 +312,7 @@ window.UI = window.UI || {};
     const season = STORE.currentSeason();
 
     root.innerHTML = `
-      <h1>Location &amp; Climate Profile</h1>
-      <p class="subtitle">Pick any of 10 reference locations, or enter custom coordinates, and load its live weather.</p>
+      ${U.pageHeader("🌐", "Location &amp; Climate Profile", "Pick any of 10 reference locations, or enter custom coordinates, and load its live weather.")}
 
       <div class="card">
         <h3>Select Location</h3>
@@ -366,16 +370,17 @@ window.UI = window.UI || {};
     async function loadLocationById(id) {
       const btn = U.qs("#loadRealBtn", root);
       const statusEl = U.qs("#fetchStatus", root);
-      if (btn) btn.disabled = true;
-      if (statusEl) statusEl.textContent = "Fetching live weather from Open-Meteo…";
+      if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
+      if (statusEl) { statusEl.classList.remove("status-error"); statusEl.textContent = "Fetching live weather from Open-Meteo…"; }
       try {
         await STORE.loadRealClimate(id);
         window.APP.render();
         window.APP.toast("Weather loaded (" + STORE.get().climateSource.label + ").");
       } catch (e) {
-        statusEl.textContent = "";
-        alert("Could not fetch live weather: " + e.message + "\n\nCheck your internet connection and try again.");
+        statusEl.classList.add("status-error");
+        statusEl.textContent = "Could not fetch live weather: " + e.message + " — check your internet connection and try again.";
         btn.disabled = false;
+        btn.classList.remove("is-loading");
       }
     }
 
@@ -385,9 +390,11 @@ window.UI = window.UI || {};
       const label = U.qs("#customLabel", root).value;
       const check = ENGINE.validateCoordinates(lat, lon);
       const statusEl = U.qs("#customStatus", root);
-      if (!check.valid) { statusEl.textContent = check.errors.join(" "); return; }
+      statusEl.classList.remove("status-error");
+      if (!check.valid) { statusEl.classList.add("status-error"); statusEl.textContent = check.errors.join(" "); return; }
       const btn = U.qs("#loadCustomBtn", root);
       btn.disabled = true;
+      btn.classList.add("is-loading");
       statusEl.textContent = "Resolving location…";
       try {
         const near = DATA.nearestPredefinedLocation(lat, lon);
@@ -401,9 +408,8 @@ window.UI = window.UI || {};
         window.APP.render();
         window.APP.toast(`Weather loaded (${near ? near.name : STORE.get().location.label}).`);
       } catch (e) {
-        if (statusEl) statusEl.textContent = "";
-        alert("Could not fetch live weather: " + e.message + "\n\nCheck your internet connection and try again.");
-        if (btn) btn.disabled = false;
+        if (statusEl) { statusEl.classList.add("status-error"); statusEl.textContent = "Could not fetch live weather: " + e.message + " — check your internet connection and try again."; }
+        if (btn) { btn.disabled = false; btn.classList.remove("is-loading"); }
       }
     }, root);
 
@@ -475,6 +481,7 @@ window.UI = window.UI || {};
         ${rh != null ? `<p class="hint" style="margin-top:10px;">Relative humidity: <b>${rh}% RH</b> — ${rhOk ? "within" : "outside"} the ${band.min}–${band.max}% RH band generally considered comfortable (informational; not used by the thermal model).</p>` : ""}
         <p class="hint" style="margin-top:6px;">Clothing and activity shift the minimum comfortable temperature only — a documented modelling heuristic (roughly 3–4°C per clothing/activity step), not a measured PMV/PPD result.</p>
         <button class="btn btn-accent btn-sm" id="saveComfortBtn" style="margin-top:8px;">Save comfort requirement</button>
+        <p class="hint status-error" id="comfortError" style="margin-top:6px;" hidden></p>
       </div>`;
   }
 
@@ -497,7 +504,9 @@ window.UI = window.UI || {};
       const max = parseFloat(U.qs("#comfortMax", root).value);
       const clothingLevel = U.qs("#comfortClothing", root).value;
       const activityLevel = U.qs("#comfortActivity", root).value;
-      if (!(baseMin < max)) { alert("Comfort minimum must be lower than comfort maximum."); return; }
+      const errEl = U.qs("#comfortError", root);
+      if (!(baseMin < max)) { if (errEl) { errEl.hidden = false; errEl.textContent = "Comfort minimum must be lower than comfort maximum."; } return; }
+      if (errEl) errEl.hidden = true;
       STORE.updateDesign({ comfort: {
         profileId: "human", baseMin, max, clothingLevel, activityLevel,
         min: DATA.effectiveComfortMin(baseMin, clothingLevel, activityLevel, max)
@@ -779,8 +788,8 @@ window.UI = window.UI || {};
     const wallOpts = DATA.materialsByCategory("WALL").map(m => `<option value="${m.id}" ${d.wall.materialId === m.id ? "selected" : ""}>${m.name}</option>`).join("");
     const roofOpts = DATA.materialsByCategory("ROOF").map(m => `<option value="${m.id}" ${d.roof.materialId === m.id ? "selected" : ""}>${m.name}</option>`).join("");
     root.innerHTML = `
-      <h1>Shelter Designer</h1>
-      <p class="subtitle">Define geometry, orientation, and openings. Preview updates live.</p>
+      ${U.pageHeader("📐", "Shelter Designer", "Define geometry, orientation, and openings. Preview updates live.")}
+      <div id="designerErrors" hidden></div>
       <div class="grid grid-2">
         <div class="card">
           <fieldset>
@@ -1129,7 +1138,8 @@ window.UI = window.UI || {};
     U.on("#saveDesignBtn", "click", () => {
       const draft = readDesignFromForm();
       const check = window.APP_VALIDATOR.validateDesign({ ...STORE.get(), design: draft });
-      if (!check.valid) { alert("Please fix the following before saving:\n\n- " + check.errors.map(e => e.message).join("\n- ")); return; }
+      if (!check.valid) { U.showValidationErrors(root, "#designerErrors", check.errors); return; }
+      U.showValidationErrors(root, "#designerErrors", []);
       STORE.updateDesign(draft);
       window.APP.render();
       window.APP.toast("Shelter design saved.");
@@ -1138,7 +1148,8 @@ window.UI = window.UI || {};
     U.on("#saveMaterialsBtn", "click", () => {
       const draft = readDesignFromForm();
       const check = window.APP_VALIDATOR.validateDesign({ ...STORE.get(), design: draft });
-      if (!check.valid) { alert("Please fix the following before saving:\n\n- " + check.errors.map(e => e.message).join("\n- ")); return; }
+      if (!check.valid) { U.showValidationErrors(root, "#designerErrors", check.errors); return; }
+      U.showValidationErrors(root, "#designerErrors", []);
       STORE.updateDesign(draft);
       window.APP.render();
       window.APP.toast("Construction saved.");
@@ -1166,12 +1177,11 @@ window.UI = window.UI || {};
     };
 
     root.innerHTML = `
-      <h1>Material Database</h1>
-      <p class="subtitle"><span class="tag tag-demo">Engineering database value</span> — typical/handbook reference
+      ${U.pageHeader("🧱", "Material Database", `<span class="tag tag-demo">Engineering database value</span> — typical/handbook reference
       properties, editable. <b>Not</b> independently lab-tested for this project and <b>not</b> sourced from a
       CPWD or state PWD Schedule of Rates (SOR) — costs below are a rough materials + installation + waste-factor
       planning estimate only. Nothing on this page is labelled "Verified"; replace any figure with an actual SOR
-      line item or vendor quotation before using it in a real costing or procurement decision.</p>
+      line item or vendor quotation before using it in a real costing or procurement decision.`)}
       ${cats.map(c => `<div class="card" style="margin-bottom:16px;"><h3>${c.replace("_"," ")}</h3>${tableFor(c)}</div>`).join("")}
 
       <div class="card">
@@ -1185,11 +1195,14 @@ window.UI = window.UI || {};
         </div>
         <button class="btn btn-accent btn-sm" id="addMaterialBtn">Add material</button>
         <span class="hint">Custom materials are marked <b>user-provided</b>, not pre-validated engineering values.</span>
+        <p class="hint status-error" id="cmNameError" style="margin-top:6px;" hidden></p>
       </div>`;
 
     U.on("#addMaterialBtn", "click", () => {
       const cat = U.qs("#cmCat", root).value, name = U.qs("#cmName", root).value.trim();
-      if (!name) { alert("Enter a material name."); return; }
+      const cmErr = U.qs("#cmNameError", root);
+      if (!name) { if (cmErr) { cmErr.hidden = false; cmErr.textContent = "Enter a material name."; } return; }
+      if (cmErr) cmErr.hidden = true;
       DATA.MATERIALS.push({
         id: "custom_" + Date.now(), category: cat, name,
         density: parseFloat(U.qs("#cmDensity", root).value) || null,
@@ -1243,7 +1256,7 @@ window.UI = window.UI || {};
   function renderGuidedLocation(root, s) {
     const loc = s.location;
     root.innerHTML = `
-      <h1>Guided Setup</h1>
+      ${U.pageHeader("🧭", "Guided Setup", "Step 1 of 5 — Location")}
       ${guidedStepBar(1)}
       <div class="card">
         <h3>Step 1 — Select a Location</h3>
@@ -1254,22 +1267,26 @@ window.UI = window.UI || {};
         <span id="gFetchStatus" class="hint" style="margin-left:8px;"></span>
         <p class="hint" style="margin-top:10px;">Need a location that isn't in this list? Use
         <a href="#/location" style="color:var(--accent);font-weight:600;">Location &amp; Climate</a> to enter custom coordinates.</p>
-        <div id="gClimateBox" style="margin-top:14px;">${loc ? U.badge(s.climateSource) : `<p class="subtitle">No climate loaded yet — click "Load Real Weather" above.</p>`}</div>
+        <div id="gClimateBox" style="margin-top:14px;">${loc ? U.badge(s.climateSource) : U.emptyState("🌤️", `No climate loaded yet — click "Load Real Weather" above.`)}</div>
       </div>
       ${guidedNav(root, !!s.location)}`;
 
     U.on("#gLoadReal", "click", async () => {
       const id = U.qs("#gLocSelect", root).value;
       const btn = U.qs("#gLoadReal", root);
+      const statusEl = U.qs("#gFetchStatus", root);
       btn.disabled = true;
-      U.qs("#gFetchStatus", root).textContent = "Fetching live weather…";
+      btn.classList.add("is-loading");
+      statusEl.classList.remove("status-error");
+      statusEl.textContent = "Fetching live weather…";
       try {
         await STORE.loadRealClimate(id);
         window.APP.render();
       } catch (e) {
-        U.qs("#gFetchStatus", root).textContent = "";
-        alert("Could not fetch live weather: " + e.message + "\n\nCheck your internet connection and try again.");
+        statusEl.classList.add("status-error");
+        statusEl.textContent = "Could not fetch live weather: " + e.message + " — check your internet connection and try again.";
         btn.disabled = false;
+        btn.classList.remove("is-loading");
       }
     }, root);
     wireGuidedNav(root, () => { guidedStep = 2; window.APP.render(); });
@@ -1285,8 +1302,9 @@ window.UI = window.UI || {};
   function renderGuidedShelter(root, s) {
     const d = s.design;
     root.innerHTML = `
-      <h1>Guided Setup</h1>
+      ${U.pageHeader("🧭", "Guided Setup", "Step 2 of 5 — Shelter")}
       ${guidedStepBar(2)}
+      <div id="gShapeErrors" hidden></div>
       <div class="grid grid-2">
         <div class="card">
           <h3>Step 2 — Define Your Shelter</h3>
@@ -1390,7 +1408,7 @@ window.UI = window.UI || {};
       const patch = readPatch();
       const merged = { ...d, ...patch };
       const check = window.APP_VALIDATOR.validateDesign({ ...s, design: merged });
-      if (!check.valid) { alert("Please fix the following before continuing:\n\n- " + check.errors.map(e => e.message).join("\n- ")); return; }
+      if (!check.valid) { U.showValidationErrors(root, "#gShapeErrors", check.errors); return; }
       STORE.updateDesign(patch);
       guidedStep = 3; window.APP.render();
     });
@@ -1425,7 +1443,7 @@ window.UI = window.UI || {};
     const insCurrentPreset = MATERIAL_PRESETS.insulation.includes(d.wall.insulationThicknessMm);
     const currentNote = (label, matId) => `<p class="hint">Currently set: <b>${U.esc((DATA.materialById(matId) || {}).name || matId)}</b> — not one of these presets (set elsewhere, e.g. an adopted Optimization recommendation or the Shelter Designer). Picking one below will replace it.</p>`;
     root.innerHTML = `
-      <h1>Guided Setup</h1>
+      ${U.pageHeader("🧭", "Guided Setup", "Step 3 of 5 — Materials")}
       ${guidedStepBar(3)}
       <div class="card">
         <h3>Step 3 — Choose Materials</h3>
@@ -1474,7 +1492,7 @@ window.UI = window.UI || {};
     const clothingId = c.clothingLevel || "TYPICAL";
     const activityId = c.activityLevel || "SEATED";
     root.innerHTML = `
-      <h1>Guided Setup</h1>
+      ${U.pageHeader("🧭", "Guided Setup", "Step 4 of 5 — Comfort")}
       ${guidedStepBar(4)}
       <div class="card">
         <h3>Step 4 — Set Comfort Range &amp; Occupancy</h3>
@@ -1499,13 +1517,16 @@ window.UI = window.UI || {};
             <select id="gActivity">${DATA.ACTIVITY_LEVELS.map(a => `<option value="${a.id}" ${(d.occupancyActivity||"SEATED")===a.id?"selected":""}>${a.label} (${a.watts} W/person)</option>`).join("")}</select>
           </div>
         </div>
+        <p class="hint status-error" id="gComfortError" style="margin-top:8px;" hidden></p>
       </div>
       ${guidedNav(root, true, "Continue to Run →")}`;
 
     wireGuidedNav(root, () => {
       const baseMinVal = parseFloat(U.qs("#gMin", root).value);
       const maxVal = parseFloat(U.qs("#gMax", root).value);
-      if (!(baseMinVal < maxVal)) { alert("Comfort minimum must be lower than comfort maximum."); return; }
+      const comfortErr = U.qs("#gComfortError", root);
+      if (!(baseMinVal < maxVal)) { if (comfortErr) { comfortErr.hidden = false; comfortErr.textContent = "Comfort minimum must be lower than comfort maximum."; } return; }
+      if (comfortErr) comfortErr.hidden = true;
       const clothingLevel = U.qs("#gClothing", root).value;
       const activityLevel = U.qs("#gComfortActivity", root).value;
       STORE.updateDesign({
@@ -1523,7 +1544,7 @@ window.UI = window.UI || {};
   function renderGuidedRun(root, s) {
     const d = s.design, season = STORE.currentSeason();
     root.innerHTML = `
-      <h1>Guided Setup</h1>
+      ${U.pageHeader("🧭", "Guided Setup", "Step 5 of 5 — Run")}
       ${guidedStepBar(5)}
       <div class="card">
         <h3>Step 5 — Review &amp; Run</h3>
@@ -1551,6 +1572,7 @@ window.UI = window.UI || {};
       U.showValidationErrors(root, "#gValidationErrors", []);
       const btn = U.qs("#gRunBtn", root);
       btn.disabled = true;
+      btn.classList.add("is-loading");
       U.qs("#gRunStatus", root).textContent = "Running thermal simulation and design optimization…";
       setTimeout(() => {
         try {
@@ -1563,8 +1585,9 @@ window.UI = window.UI || {};
           window.APP.toast("Simulation and optimization complete.");
         } catch (e) {
           U.qs("#gRunStatus", root).textContent = "";
-          alert("Simulation failed: " + e.message);
+          U.showValidationErrors(root, "#gValidationErrors", [{ field: null, message: "Simulation failed: " + e.message }]);
           btn.disabled = false;
+          btn.classList.remove("is-loading");
         }
       }, 30);
     }, root);

@@ -108,7 +108,7 @@ window.APP = (function () {
   // no illustrative/hand-authored climate data anywhere in the app.
   async function runLiveDemo() {
     const btn = document.getElementById("runLiveDemoBtn");
-    if (btn) btn.disabled = true;
+    if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
     toast("Fetching live weather for Leh, Ladakh…");
     try {
       await STORE.loadRealClimate("leh");
@@ -129,7 +129,7 @@ window.APP = (function () {
       logError("runLiveDemo", e);
       toast("Could not complete the live demo: " + e.message);
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) { btn.disabled = false; btn.classList.remove("is-loading"); }
     }
   }
 

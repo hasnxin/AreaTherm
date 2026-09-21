@@ -123,11 +123,10 @@ window.UI = window.UI || {};
     const s = STORE.get();
 
     root.innerHTML = `
-      <h1>Model Validation</h1>
-      <p class="subtitle"><span class="tag tag-field">user-provided</span> Enter measured field data (from an actual
+      ${U.pageHeader("✅", "Model Validation", `<span class="tag tag-field">user-provided</span> Enter measured field data (from an actual
       instrumented shelter) to compare against the model's prediction. No field measurements exist for this prototype —
       the rows below are editable placeholders you can overwrite. Requires field validation before use in a real
-      engineering decision.</p>
+      engineering decision.`)}
 
       ${modelAssumptionsHtml()}
 
@@ -229,8 +228,8 @@ window.UI = window.UI || {};
     const shapeDimensions = U.shapeDimensionsText(s.design);
 
     root.innerHTML = `
-      <div class="card" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div><b>Engineering Report</b> — printable / exportable to PDF via your browser's print dialog (works fully offline, no external library required).</div>
+      ${U.pageHeader("📄", "Reports", "Printable / exportable to PDF via your browser's print dialog — works fully offline, no external library required.")}
+      <div class="card" style="margin-bottom:14px; display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn" id="climateCardBtn">📄 Climate Profile Card</button>
           <button class="btn" id="materialCompBtn">📄 Material Comparison Sheet</button>
@@ -370,7 +369,7 @@ window.UI = window.UI || {};
     const loc = s.location;
     const season = STORE.currentSeason();
     if (!loc || !season) {
-      root.innerHTML = `<h1>Climate Profile Card</h1><div class="card"><p class="subtitle">No climate profile loaded yet. Go to <a href="#/location" style="color:var(--accent);font-weight:600;">Location &amp; Climate</a> and load a location first.</p></div>`;
+      root.innerHTML = `<h1>Climate Profile Card</h1><div class="card">${U.emptyState("🌤️", "No climate profile loaded yet.", `<a href="#/location" class="kpi-link">Go to Location &amp; Climate →</a>`)}</div>`;
       return;
     }
     const zone = U.classifyClimate(loc, season);
@@ -501,8 +500,7 @@ window.UI = window.UI || {};
     const weakest = opt ? (opt.all && opt.all.length ? opt.all[opt.all.length - 1] : opt.top[opt.top.length - 1]) : null;
 
     root.innerHTML = `
-      <h1>Design Intelligence Summary</h1>
-      <p class="subtitle">A 2–3 minute overview for an evaluator: the problem, the model, and the recommended design.</p>
+      ${U.pageHeader("🗒️", "Design Intelligence Summary", "A 2–3 minute overview for an evaluator: the problem, the model, and the recommended design.")}
       ${s.climateSource ? `<div style="margin-bottom:14px;">${U.badge(s.climateSource)}</div>` : ""}
 
       <div class="grid grid-3" style="margin-bottom:16px;">
@@ -590,7 +588,7 @@ window.UI = window.UI || {};
     const projects = STORE.listProjects();
     loadStorageEstimateOnce();
     root.innerHTML = `
-      <h1>Settings</h1>
+      ${U.pageHeader("⚙️", "Settings", "Appearance, units, model assumptions, and saved projects.")}
       <div class="grid grid-2">
         <div class="card">
           <h3>Mode</h3>
@@ -704,7 +702,8 @@ window.UI = window.UI || {};
               <button class="btn btn-sm" style="color:var(--bad);margin-left:6px;" data-delete-proj="${p.id}">Delete</button>
             </td>
           </tr>`).join("")}
-        </table></div>` : `<p class="hint">No saved projects yet — click "New Project" or save the current one below to start a list.</p>`}
+        </table></div>` : U.emptyState("🗂️", `No saved projects yet — click "New Project" or save the current one below to start a list.`)}
+        <p class="hint status-error" id="newProjError" style="margin-top:6px;" hidden></p>
         <button class="btn btn-sm" id="saveCurrentAsProjectBtn" style="margin-top:10px;">Save current design to this list</button>
       </div>
     `;
@@ -726,7 +725,9 @@ window.UI = window.UI || {};
     }, root);
     U.on("#newProjectBtn", "click", async () => {
       const name = U.qs("#newProjName", root).value.trim();
-      if (!name) { alert("Enter a name for the new project."); return; }
+      const nameErr = U.qs("#newProjError", root);
+      if (!name) { if (nameErr) { nameErr.hidden = false; nameErr.textContent = "Enter a name for the new project."; } return; }
+      if (nameErr) nameErr.hidden = true;
       await STORE.newProject(name);
       window.APP.render();
       window.APP.toast(`New project "${name}" created and set as current.`);

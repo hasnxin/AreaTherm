@@ -626,5 +626,19 @@ window.APP_CHARTS = (function () {
     img.src = svgUrl;
   }
 
-  return { lineChart, barChart, scatterChart, scoreGauge, hourlyHeatFlowChart, stackedHourlyChart, monthlyBarChart, stackedHeatBalanceChart, downloadChartPng };
+  // Minimal inline trend indicator for a KPI card — plots already-computed
+  // history values (e.g. past thermalComfortScore entries), no new data or
+  // calculation. Renders nothing for <2 points (no trend to show).
+  function sparkline(container, values) {
+    if (!container) return;
+    if (!values || values.length < 2) { container.innerHTML = ""; return; }
+    const w = 100, h = 28;
+    const max = Math.max(...values), min = Math.min(...values), span = (max - min) || 1;
+    const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${h - ((v - min) / span) * h}`).join(" ");
+    container.innerHTML = `<svg viewBox="0 0 ${w} ${h}" class="sparkline-svg" preserveAspectRatio="none">
+      <polyline points="${pts}" class="sparkline-line" fill="none"/>
+    </svg>`;
+  }
+
+  return { lineChart, barChart, scatterChart, scoreGauge, hourlyHeatFlowChart, stackedHourlyChart, monthlyBarChart, stackedHeatBalanceChart, downloadChartPng, sparkline };
 })();

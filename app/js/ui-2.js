@@ -7,7 +7,7 @@ window.UI = window.UI || {};
   function matName(id) { const m = DATA.materialById(id); return m ? m.name : id || "—"; }
 
   function noClimateCard() {
-    return `<div class="card"><p class="subtitle">No climate profile loaded yet. Go to <a href="#/location" style="color:var(--accent);font-weight:600;">Location &amp; Climate</a> and load a location first.</p></div>`;
+    return `<div class="card">${U.emptyState("🌤️", "No climate profile loaded yet.", `<a href="#/location" class="kpi-link">Go to Location &amp; Climate →</a>`)}</div>`;
   }
 
   // Buckets a (possibly multi-day, sub-hourly) simulation series into 24
@@ -212,12 +212,11 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
   UI.renderSimulation = function (root) {
     const s = STORE.get();
     const season = STORE.currentSeason();
-    if (!season) { root.innerHTML = `<h1>Thermal Simulation</h1>` + noClimateCard(); return; }
+    if (!season) { root.innerHTML = U.pageHeader("🌡️", "Thermal Simulation", "") + noClimateCard(); return; }
 
     const result = s.lastSimulationResult;
     root.innerHTML = `
-      <h1>Thermal Simulation</h1>
-      <p class="subtitle">Hourly physics-based energy balance for <b>${U.esc(s.location.label)}</b> — ${U.esc(s.seasonKey)}</p>
+      ${U.pageHeader("🌡️", "Thermal Simulation", `Hourly physics-based energy balance for <b>${U.esc(s.location.label)}</b> — ${U.esc(s.seasonKey)}`)}
       <div style="margin-bottom:14px;">${U.badge(s.climateSource)}</div>
       <div class="card">
         <div class="form-inline">
@@ -237,6 +236,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       </div>
 
       ${result ? `
+      <div class="section-label" style="margin-top:8px;">Prediction</div>
       <div class="grid grid-4" style="margin:16px 0;">
         <div class="metric-card card"><div class="metric-icon metric-icon-temp">🌡️</div><div class="metric-label">Predicted Indoor Temp</div><div class="metric-value" style="font-size:18px;">${result.comfort.minIndoor} – ${result.comfort.maxIndoor} °C</div><div class="metric-sub">Model Prediction</div></div>
         <div class="metric-card card"><div class="metric-icon metric-icon-sun">☀️</div><div class="metric-label">Solar Heat Gain</div><div class="metric-value" style="font-size:18px;">${result.daily.solarKwh} kWh/day</div></div>
@@ -252,6 +252,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         <div id="tempChart"></div>
       </div>
 
+      <div class="section-label">Energy Balance</div>
       <div class="card" style="margin-bottom:16px;">
         <h3>Hourly Heat Flow Breakdown <span class="tag tag-model">model prediction — first 24h</span></h3>
         <p class="hint" style="margin-bottom:8px;">Gains stack upward, losses stack downward — hover for exact watts per component.</p>
@@ -288,6 +289,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         </div>
       </div>
 
+      <div class="section-label">Occupancy &amp; Comfort</div>
       ${result.occupancy.persons > 0 ? `
       <div class="card" style="margin-top:16px;">
         <h3>Occupancy Heat &amp; Ventilation Diagnostics</h3>
@@ -350,7 +352,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         window.APP.render();
         window.APP.toast("Simulation complete.");
       } catch (e) {
-        alert("Simulation failed: " + e.message);
+        U.showValidationErrors(root, "#simValidationErrors", [{ field: null, message: "Simulation failed: " + e.message }]);
       }
     }, root);
   };
@@ -399,7 +401,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
   UI.renderOptimization = function (root) {
     const s = STORE.get();
     const season = STORE.currentSeason();
-    if (!season) { root.innerHTML = `<h1>Design Optimization</h1>` + noClimateCard(); return; }
+    if (!season) { root.innerHTML = U.pageHeader("📊", "Design Optimization", "") + noClimateCard(); return; }
     const w = s.weights;
     const opt = s.lastOptimizationResult;
 
@@ -408,9 +410,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         <input type="range" min="0" max="100" value="${Math.round(w[key]*100)}" data-weight="${key}"></div>`;
 
     root.innerHTML = `
-      <h1>Design Optimization Engine</h1>
-      <p class="subtitle">Generates candidate shelter configurations across orientation, insulation, glazing, window
-      area, and thermal mass — scores each with a configurable weighted multi-criteria formula.</p>
+      ${U.pageHeader("📊", "Design Optimization Engine", "Generates candidate shelter configurations across orientation, insulation, glazing, window area, and thermal mass — scores each with a configurable weighted multi-criteria formula.")}
 
       <div class="card">
         <h3>Scoring Weights (must total 100%)</h3>
@@ -590,7 +590,7 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         window.APP.render();
         window.APP.toast(`Optimization complete — ${result.candidatesEvaluated} candidates evaluated.`);
       } catch (e) {
-        alert("Optimization failed: " + e.message);
+        U.showValidationErrors(root, "#optValidationErrors", [{ field: null, message: "Optimization failed: " + e.message }]);
       }
     }, root);
   };
@@ -624,16 +624,16 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
   UI.renderWhatIf = function (root) {
     const s = STORE.get();
     const season = STORE.currentSeason();
-    if (!season) { root.innerHTML = `<h1>What-If Analysis</h1>` + noClimateCard(); return; }
+    if (!season) { root.innerHTML = U.pageHeader("🔀", "What-If Analysis", "") + noClimateCard(); return; }
 
     root.innerHTML = `
-      <h1>What-If Analysis</h1>
-      <p class="subtitle">Compare the current baseline design against a single-parameter change.</p>
+      ${U.pageHeader("🔀", "What-If Analysis", "Compare the current baseline design against a single-parameter change.")}
       <div class="card">
         <div class="form-row"><label>Scenario</label>
           <select id="whatifPreset">${Object.entries(WHATIF_PRESETS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("")}</select>
         </div>
         <button class="btn btn-accent" id="runWhatifBtn">▶ Run What-If Comparison</button>
+        <div id="whatifValidationErrors" hidden></div>
       </div>
       <div id="whatifResults"></div>
     `;
@@ -645,7 +645,11 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       const after = JSON.parse(JSON.stringify(s.design));
       preset.apply(after);
       const check = ENGINE.validateDesign(after);
-      if (!check.valid) { alert("This scenario produces an invalid design:\n\n- " + check.errors.join("\n- ")); return; }
+      if (!check.valid) {
+        U.showValidationErrors(root, "#whatifValidationErrors", check.errors.map(msg => ({ field: null, message: "This scenario produces an invalid design: " + msg })));
+        return;
+      }
+      U.showValidationErrors(root, "#whatifValidationErrors", []);
       const beforeRes = ENGINE.runSimulation(before, season, s.simConfig);
       const afterRes = ENGINE.runSimulation(after, season, s.simConfig);
 

@@ -9,6 +9,32 @@ window.U = {
   on(sel, evt, fn, root) { const e = this.qs(sel, root); if (e) e.addEventListener(evt, fn); },
   esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); },
 
+  // Consistent page-header block (icon + title + subtitle, optional
+  // right-aligned actions) used by every page except Dashboard (which
+  // keeps its hero instead). `icon` is one of the same emoji already
+  // assigned per-route in index.html's sidebar nav / ui-1.js's
+  // EXPLORE_TILES — no new icon vocabulary. `subtitle`/`actionsHtml` are
+  // trusted HTML from this app's own template strings, same as every
+  // other *Html() helper in this codebase (not user input).
+  pageHeader(icon, title, subtitle, actionsHtml) {
+    return `<div class="page-header">
+      <div class="page-header-icon">${icon}</div>
+      <div class="page-header-text"><h1>${title}</h1><p class="subtitle">${subtitle}</p></div>
+      ${actionsHtml ? `<div class="page-header-actions">${actionsHtml}</div>` : ""}
+    </div>`;
+  },
+
+  // Shared "nothing here yet" component — replaces a bare <p class="hint">
+  // wherever a page has no data to show. ctaHtml is typically a link to
+  // wherever the user should go to produce that data.
+  emptyState(icon, message, ctaHtml) {
+    return `<div class="empty-state">
+      <div class="empty-state-icon">${icon}</div>
+      <p>${message}</p>
+      ${ctaHtml ? `<div class="empty-state-cta">${ctaHtml}</div>` : ""}
+    </div>`;
+  },
+
   // Shape-aware dimension text for a design. design.length/width only hold
   // meaningful values for a RECTANGULAR footprint: SQUARE overrides width
   // to match length inside computeGeometry (so the raw stored value can be
