@@ -313,6 +313,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
   function candidateFieldValue(c, key) {
     switch (key) {
       case "rank": return c.rank;
+      case "wall": return matName(c.params.wall);
+      case "roof": return matName(c.params.roof);
       case "orient": return c.params.orient;
       case "insul": return c.params.insul;
       case "wpct": return c.params.wpct;
@@ -338,7 +340,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       return sortDir === "asc" ? cmp : -cmp;
     });
     tbody.innerHTML = sorted.map(c => `<tr class="${c.rank === 1 ? "highlight-recommended" : ""}">
-      <td class="num">${c.rank}${c.rank === 1 ? " ★" : ""}</td><td>${c.params.orient}</td><td>${c.params.insul} mm</td>
+      <td class="num">${c.rank}${c.rank === 1 ? " ★" : ""}</td><td>${matName(c.params.wall)}</td><td>${matName(c.params.roof)}</td>
+      <td>${c.params.orient}</td><td>${c.params.insul} mm</td>
       <td class="num">${Math.round(c.params.wpct * 100)}%</td><td>${matName(c.params.glz)}</td><td class="num">${c.params.mass} kg</td>
       <td class="num">${c.score.comfort.toFixed(0)}</td><td class="num">${c.score.retention.toFixed(0)}</td>
       <td class="num">${c.score.solar.toFixed(0)}</td><td class="num">${c.score.energyScore.toFixed(0)}</td>
@@ -381,11 +384,12 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       <div class="card" style="margin:16px 0;">
         <h3>Candidate Designs <span class="tag tag-model">${opt.candidatesEvaluated} configurations evaluated</span></h3>
         <div class="table-wrap"><table><thead><tr>
-          <th>Design</th><th>Orientation</th><th>Insulation</th><th>Window %</th><th>Glazing</th><th>Thermal Mass</th>
+          <th>Design</th><th>Wall</th><th>Roof</th><th>Orientation</th><th>Insulation</th><th>Window %</th><th>Glazing</th><th>Thermal Mass</th>
           <th>Comfort</th><th>Retention</th><th>Solar</th><th>Energy</th><th>Cost</th><th>Total Score</th>
         </tr></thead><tbody>
           ${opt.top.map(c => `<tr class="${c.isRecommended ? "highlight-recommended" : ""}">
             <td><b>${c.label}</b>${c.isRecommended ? " ★" : ""}</td>
+            <td>${matName(c.params.wall)}</td><td>${matName(c.params.roof)}</td>
             <td>${c.params.orient}</td><td>${c.params.insul} mm</td><td>${Math.round(c.params.wpct*100)}%</td>
             <td>${matName(c.params.glz)}</td><td>${c.params.mass} kg</td>
             <td class="num">${c.score.comfort.toFixed(0)}</td><td class="num">${c.score.retention.toFixed(0)}</td>
@@ -468,7 +472,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         <button class="btn btn-sm" id="exportCsvBtn" style="margin-bottom:8px;">⬇ Export all candidates to CSV (opens in Excel)</button>
         <div class="table-wrap" style="max-height:420px; overflow-y:auto;">
           <table id="allCandidatesTable"><thead><tr>
-            <th data-sort="rank" class="sortable">#</th><th data-sort="orient" class="sortable">Orientation</th>
+            <th data-sort="rank" class="sortable">#</th><th data-sort="wall" class="sortable">Wall</th>
+            <th data-sort="roof" class="sortable">Roof</th><th data-sort="orient" class="sortable">Orientation</th>
             <th data-sort="insul" class="sortable">Insulation</th><th data-sort="wpct" class="sortable">Window %</th>
             <th data-sort="glz" class="sortable">Glazing</th><th data-sort="mass" class="sortable">Thermal Mass</th>
             <th data-sort="comfort" class="sortable">Comfort</th><th data-sort="retention" class="sortable">Retention</th>
@@ -516,8 +521,8 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
         renderAllCandidatesRows(root, opt, allSortKey, allSortDir);
       }));
       U.on("#exportCsvBtn", "click", () => {
-        const headers = ["Rank", "Orientation", "Insulation (mm)", "Window %", "Glazing", "Thermal Mass (kg)", "Comfort", "Retention", "Solar", "Energy Score", "Cost Score", "Estimated Cost (INR)", "Total Score"];
-        const rows = opt.all.map(c => [c.rank, c.params.orient, c.params.insul, Math.round(c.params.wpct * 100), matName(c.params.glz), c.params.mass, c.score.comfort.toFixed(1), c.score.retention.toFixed(1), c.score.solar.toFixed(1), c.score.energyScore.toFixed(1), c.score.costScore.toFixed(1), c.cost, c.score.total.toFixed(1)]);
+        const headers = ["Rank", "Wall", "Roof", "Orientation", "Insulation (mm)", "Window %", "Glazing", "Thermal Mass (kg)", "Comfort", "Retention", "Solar", "Energy Score", "Cost Score", "Estimated Cost (INR)", "Total Score"];
+        const rows = opt.all.map(c => [c.rank, matName(c.params.wall), matName(c.params.roof), c.params.orient, c.params.insul, Math.round(c.params.wpct * 100), matName(c.params.glz), c.params.mass, c.score.comfort.toFixed(1), c.score.retention.toFixed(1), c.score.solar.toFixed(1), c.score.energyScore.toFixed(1), c.score.costScore.toFixed(1), c.cost, c.score.total.toFixed(1)]);
         window.APP_EXPORT.downloadCsv("areatherm_design_candidates.csv", headers, rows);
         window.APP.toast(`Exported ${opt.all.length} candidates to CSV.`);
       }, root);

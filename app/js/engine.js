@@ -506,45 +506,95 @@ window.APP_ENGINE = (function () {
   // ---- Optimization: candidate generation + scoring -----------------------
   function cloneDesign(d) { return JSON.parse(JSON.stringify(d)); }
 
+  // Curated wall/roof "systems" (material + a realistic thickness for that
+  // material, from its own defaultThicknessMm) spanning the actual material
+  // library — one entry per wall material (stone gets a second, more-
+  // insulated variant) and per roof material (RCC likewise). Previously
+  // generateCandidates only ever varied insulation *thickness* on whatever
+  // wall/roof material happened to already be on the baseline design, so
+  // every optimization run recommended the same material regardless of
+  // climate — the search space simply never contained an alternative.
+  // Iterating material combinations here is what lets a hot-dry site end up
+  // recommended a lightweight/insulating wall and a cold site a heavy
+  // masonry one, instead of always the same baseline material back.
+  function wallSystem(materialId, insulationThicknessMm) {
+    const mat = DATA.materialById(materialId);
+    return { materialId, thicknessMm: (mat && mat.defaultThicknessMm) || 300, insulationThicknessMm };
+  }
+  function roofSystem(materialId, insulationThicknessMm) {
+    const mat = DATA.materialById(materialId);
+    return { materialId, thicknessMm: (mat && mat.defaultThicknessMm) || 150, insulationThicknessMm };
+  }
+  const WALL_SYSTEMS = [
+    wallSystem("wall_stone", 50), wallSystem("wall_stone", 100),
+    wallSystem("wall_brick", 75), wallSystem("wall_adobe", 50),
+    wallSystem("wall_rammed_earth", 50), wallSystem("wall_mud_block", 50),
+    wallSystem("wall_aac", 75), wallSystem("wall_insulated_panel", 50),
+    wallSystem("wall_composite", 75), wallSystem("wall_concrete", 100)
+  ];
+  const ROOF_SYSTEMS = [
+    roofSystem("roof_rcc", 50), roofSystem("roof_rcc", 100),
+    roofSystem("roof_metal", 50), roofSystem("roof_insulated_metal", 50),
+    roofSystem("roof_composite", 50), roofSystem("roof_earth", 50)
+  ];
+  // null = no thermal mass; otherwise a material + a representative amount.
+  const MASS_OPTIONS = [
+    null,
+    { materialId: "mass_stone", massKg: 900 }, { materialId: "mass_water", massKg: 900 },
+    { materialId: "mass_pcm", massKg: 400 }, { materialId: "mass_composite", massKg: 900 },
+    { materialId: "mass_earth", massKg: 1600 }
+  ];
+
   function generateCandidates(baseDesign) {
     const orientations = ["SOUTH", "SE", "SW", "EAST"];
-    const insulationMm = [50, 75, 100, 150];
     const windowPct = [0.08, 0.12, 0.16, 0.20];
     const glazings = ["glaze_single", "glaze_double", "glaze_triple", "glaze_lowe"];
-    const massLevels = [0, 400, 900, 1600];
 
+    // Wall x roof material is the primary axis (10 x 6 = 60, one candidate
+    // per material combination, guaranteeing every wall/roof pairing is
+    // actually evaluated). Orientation/window%/glazing/thermal-mass cycle
+    // across that same 60-candidate sequence via coprime-ish offsets so the
+    // secondary parameters still vary — not locked to a single value — but
+    // don't need a full nested cross-product to do it.
     const candidates = [];
-    let n = 0;
-    for (const orient of orientations) {
-      for (const insul of insulationMm) {
-        for (const wpct of windowPct) {
-          for (const glz of glazings) {
-            for (const mass of massLevels) {
-              n++;
-              if (n % 3 !== 0 && candidates.length > 0) continue; // sample the space, keep it fast
-              const d = cloneDesign(baseDesign);
-              d.orientation = orient === "SOUTH" || orient === "EAST" ? orient : "CUSTOM";
-              if (orient === "SE") { d.orientation = "CUSTOM"; d.azimuthDeg = 45; }
-              if (orient === "SW") { d.orientation = "CUSTOM"; d.azimuthDeg = 315; }
-              if (orient === "SOUTH") d.azimuthDeg = 0;
-              if (orient === "EAST") d.azimuthDeg = 90;
-              d.wall.insulationMaterialId = d.wall.insulationMaterialId || "ins_puf";
-              d.wall.insulationThicknessMm = insul;
-              d.roof.insulationMaterialId = d.roof.insulationMaterialId || "ins_puf";
-              d.roof.insulationThicknessMm = insul;
-              const geom0 = computeGeometry(d);
-              const targetWindowArea = geom0.wallArea * wpct;
-              d.windows = [{ areaEach: round2(targetWindowArea), count: 1, orientation: "FRONT", glazingMaterialId: glz }];
-              if (mass > 0) {
-                d.thermalMass = { materialId: "mass_composite", massKg: mass, surfaceAreaM2: Math.min(geom0.floorArea, mass / 300) };
-              } else {
-                d.thermalMass = null;
-              }
-              candidates.push({ design: d, params: { orient, insul, wpct, glz, mass } });
-              if (candidates.length >= 60) return candidates;
-            }
-          }
+    let idx = 0;
+    for (const wallSys of WALL_SYSTEMS) {
+      for (const roofSys of ROOF_SYSTEMS) {
+        const orient = orientations[idx % orientations.length];
+        const wpct = windowPct[(idx + 1) % windowPct.length];
+        const glz = glazings[(idx + 2) % glazings.length];
+        const massOpt = MASS_OPTIONS[idx % MASS_OPTIONS.length];
+        idx++;
+
+        const d = cloneDesign(baseDesign);
+        d.orientation = orient === "SOUTH" || orient === "EAST" ? orient : "CUSTOM";
+        if (orient === "SE") { d.orientation = "CUSTOM"; d.azimuthDeg = 45; }
+        if (orient === "SW") { d.orientation = "CUSTOM"; d.azimuthDeg = 315; }
+        if (orient === "SOUTH") d.azimuthDeg = 0;
+        if (orient === "EAST") d.azimuthDeg = 90;
+        d.wall.materialId = wallSys.materialId;
+        d.wall.thicknessMm = wallSys.thicknessMm;
+        d.wall.insulationMaterialId = d.wall.insulationMaterialId || "ins_puf";
+        d.wall.insulationThicknessMm = wallSys.insulationThicknessMm;
+        d.roof.materialId = roofSys.materialId;
+        d.roof.thicknessMm = roofSys.thicknessMm;
+        d.roof.insulationMaterialId = d.roof.insulationMaterialId || "ins_puf";
+        d.roof.insulationThicknessMm = roofSys.insulationThicknessMm;
+        const geom0 = computeGeometry(d);
+        const targetWindowArea = geom0.wallArea * wpct;
+        d.windows = [{ areaEach: round2(targetWindowArea), count: 1, orientation: "FRONT", glazingMaterialId: glz }];
+        if (massOpt) {
+          d.thermalMass = { materialId: massOpt.materialId, massKg: massOpt.massKg, surfaceAreaM2: Math.min(geom0.floorArea, massOpt.massKg / 300) };
+        } else {
+          d.thermalMass = null;
         }
+        candidates.push({
+          design: d,
+          params: {
+            orient, insul: wallSys.insulationThicknessMm, wpct, glz, mass: massOpt ? massOpt.massKg : 0,
+            wall: wallSys.materialId, roof: roofSys.materialId, massMat: massOpt ? massOpt.materialId : null
+          }
+        });
       }
     }
     return candidates;
