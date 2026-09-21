@@ -458,21 +458,31 @@ window.UI = window.UI || {};
   };
 
   // ---------------------------------------------------------------------
-  function localStorageUsageKB() {
-    let total = 0;
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        total += k.length + (localStorage.getItem(k) || "").length;
-      }
-    } catch (e) { return null; }
-    return Math.round(total / 1024);
+  // Origin storage usage across everything (IndexedDB + localStorage) —
+  // navigator.storage.estimate() is async, so this reads a cached value and
+  // kicks off (at most once per empty state) a fetch that triggers one
+  // re-render when it resolves, rather than blocking or polling on it.
+  let storageEstimate = null; // null | "loading" | "unsupported" | {usageKB, quotaKB}
+  function loadStorageEstimateOnce() {
+    if (storageEstimate !== null) return;
+    if (!(navigator.storage && navigator.storage.estimate)) { storageEstimate = "unsupported"; return; }
+    storageEstimate = "loading";
+    navigator.storage.estimate().then(est => {
+      storageEstimate = { usageKB: Math.round((est.usage || 0) / 1024), quotaKB: Math.round((est.quota || 0) / 1024) };
+      window.APP.render();
+    }).catch(() => { storageEstimate = "unsupported"; });
+  }
+  function storageUsageLabel() {
+    if (storageEstimate === "loading" || storageEstimate === null) return "calculating…";
+    if (storageEstimate === "unsupported") return "unavailable in this browser";
+    const { usageKB, quotaKB } = storageEstimate;
+    return `${usageKB.toLocaleString()} KB used${quotaKB ? ` of ~${Math.round(quotaKB / 1024).toLocaleString()} MB available` : ""}`;
   }
 
   UI.renderSettings = function (root) {
     const s = STORE.get();
     const projects = STORE.listProjects();
-    const storageKB = localStorageUsageKB();
+    loadStorageEstimateOnce();
     root.innerHTML = `
       <h1>Settings</h1>
       <div class="grid grid-2">
@@ -543,7 +553,7 @@ window.UI = window.UI || {};
           <li>Fallback chain: live fetch → fresh cache → stale cache → a clear error message. The data-source badge always reflects which tier actually served the number.</li>
           <li>Every simulation input is validated (positive dimensions/thickness, valid comfort range, valid coordinates) before it reaches the physics solver, with a specific on-screen message instead of a crash.</li>
         </ul>
-        <p class="hint" style="margin-top:10px;">Cached weather/NASA POWER/elevation lookups are kept indefinitely as an offline fallback and are never deleted automatically — after enough different locations they can fill the browser's storage quota, which then blocks new saves (designs, simulations stop persisting). Browser storage used: <b>${storageKB == null ? "unavailable" : storageKB + " KB"}</b>.</p>
+        <p class="hint" style="margin-top:10px;">Cached weather/NASA POWER/elevation lookups are kept indefinitely as an offline fallback and are never deleted automatically — after enough different locations this can add up, which is why it's stored in IndexedDB (hundreds of MB to low-GB of headroom) rather than the much smaller localStorage. Browser storage used: <b>${storageUsageLabel()}</b>.</p>
         <button class="btn btn-sm" id="clearCacheBtn">Clear cached location data</button>
       </div>
 
@@ -593,8 +603,9 @@ window.UI = window.UI || {};
     U.on("#unitsMetricBtn", "click", () => { s.units = "METRIC"; STORE.save(); window.APP.render(); }, root);
     U.on("#unitsImperialBtn", "click", () => { s.units = "IMPERIAL"; STORE.save(); window.APP.render(); }, root);
     U.on("#saveProjNameBtn", "click", () => { s.project.name = U.qs("#projNameInput", root).value; STORE.save(); window.APP.render(); }, root);
-    U.on("#clearCacheBtn", "click", () => {
-      const freed = STORE.clearCache();
+    U.on("#clearCacheBtn", "click", async () => {
+      const freed = await STORE.clearCache();
+      storageEstimate = null; // force a fresh usage readout to reflect the clear
       window.APP.toast(freed ? `Cleared ${freed} cached location lookup${freed === 1 ? "" : "s"} — the next simulation will re-fetch live data as needed.` : "No cached location data to clear.");
       window.APP.render();
     }, root);
@@ -603,32 +614,32 @@ window.UI = window.UI || {};
         STORE.reset(); window.APP.render();
       }
     }, root);
-    U.on("#newProjectBtn", "click", () => {
+    U.on("#newProjectBtn", "click", async () => {
       const name = U.qs("#newProjName", root).value.trim();
       if (!name) { alert("Enter a name for the new project."); return; }
-      STORE.newProject(name);
+      await STORE.newProject(name);
       window.APP.render();
       window.APP.toast(`New project "${name}" created and set as current.`);
     }, root);
-    U.on("#saveCurrentAsProjectBtn", "click", () => {
-      STORE.saveAsProject(s.project.name);
+    U.on("#saveCurrentAsProjectBtn", "click", async () => {
+      await STORE.saveAsProject(s.project.name);
       window.APP.render();
       window.APP.toast(`"${s.project.name}" saved to your projects list.`);
     }, root);
-    U.qsa("[data-load-proj]", root).forEach(btn => btn.addEventListener("click", () => {
+    U.qsa("[data-load-proj]", root).forEach(btn => btn.addEventListener("click", async () => {
       const id = btn.dataset.loadProj;
       const proj = projects.find(p => p.id === id);
       if (proj && !confirm(`Switch to "${proj.name}"? Your current design is already saved and won't be lost.`)) return;
-      STORE.loadProject(id);
+      await STORE.loadProject(id);
       window.APP.applyTheme();
       window.APP.render();
       window.APP.toast(`Loaded "${proj ? proj.name : "project"}".`);
     }));
-    U.qsa("[data-delete-proj]", root).forEach(btn => btn.addEventListener("click", () => {
+    U.qsa("[data-delete-proj]", root).forEach(btn => btn.addEventListener("click", async () => {
       const id = btn.dataset.deleteProj;
       const proj = projects.find(p => p.id === id);
       if (!confirm(`Delete the saved project "${proj ? proj.name : ""}"? This only removes it from your saved list — it won't affect your current work.`)) return;
-      STORE.deleteProject(id);
+      await STORE.deleteProject(id);
       window.APP.render();
       window.APP.toast("Project deleted.");
     }));

@@ -1325,14 +1325,117 @@ window.APP_DATA = (function () {
 </script>
 
 <script>
+/* AreaTherm — tiny promise-based IndexedDB wrapper.
+   Backs the two localStorage-quota-sensitive stores (the reliability
+   layer's weather/NASA POWER/elevation cache, and the saved-projects
+   list) with a database that typically has hundreds of MB to low-GB of
+   headroom instead of localStorage's ~5-10MB, while keeping the same
+   per-origin, no-server, no-install storage model. Every method resolves
+   to a safe fallback (null / [] / 0) rather than throwing, so a caller in
+   a context where IndexedDB is unavailable (private browsing in some
+   browsers, disabled storage) degrades the same way the old localStorage
+   cache already did — a cache miss, not a crash. */
+
+window.APP_IDB = (function () {
+  const DB_NAME = "areatherm_db";
+  const DB_VERSION = 1;
+  const STORE_NAMES = ["apiCache", "projects"];
+
+  let dbPromise = null;
+  function openDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      if (!window.indexedDB) { reject(new Error("IndexedDB not available")); return; }
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        STORE_NAMES.forEach(name => { if (!db.objectStoreNames.contains(name)) db.createObjectStore(name); });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return dbPromise;
+  }
+
+  async function get(storeName, key) {
+    try {
+      const db = await openDb();
+      return await new Promise((resolve, reject) => {
+        const req = db.transaction(storeName, "readonly").objectStore(storeName).get(key);
+        req.onsuccess = () => resolve(req.result != null ? req.result : null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (e) { return null; }
+  }
+
+  async function set(storeName, key, value) {
+    const db = await openDb(); // let this throw — callers (cacheWrite/mirrorIntoProjectsList) already handle a rejected write
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function del(storeName, key) {
+    try {
+      const db = await openDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) { /* nothing to delete or storage unavailable */ }
+  }
+
+  // Returns [{key, value}] for every row — used both to list saved
+  // projects and to find the oldest API-cache entries to evict.
+  async function getAllEntries(storeName) {
+    try {
+      const db = await openDb();
+      return await new Promise((resolve, reject) => {
+        const store = db.transaction(storeName, "readonly").objectStore(storeName);
+        const out = [];
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) { out.push({ key: cursor.key, value: cursor.value }); cursor.continue(); }
+          else resolve(out);
+        };
+        cursorReq.onerror = () => reject(cursorReq.error);
+      });
+    } catch (e) { return []; }
+  }
+
+  async function clearStore(storeName) {
+    try {
+      const db = await openDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) { /* storage unavailable */ }
+  }
+
+  return { get, set, del, getAllEntries, clearStore };
+})();
+
+</script>
+
+<script>
 /* AreaTherm — reliability layer for every external API call.
    A single place implementing: request timeouts, capped exponential-backoff
    retries, a per-source circuit breaker, and a tiered cache-fallback chain
    (live -> fresh cache -> stale cache -> clear error). Used by
    weather-api.js, nasa-power.js, and elevation.js so a slow or unreachable
    network degrades gracefully instead of freezing the UI or crashing the
-   live demo. Pure/no DOM, so it also has no dependency on the rest of the
-   app beyond APP_CONFIG.RELIABILITY. */
+   live demo. The cache itself lives in IndexedDB (see idb.js) rather than
+   localStorage, so this module's only other dependency beyond
+   APP_CONFIG.RELIABILITY is window.APP_IDB. */
 
 window.APP_RELIABLE = (function () {
   const CFG = (window.APP_CONFIG && window.APP_CONFIG.RELIABILITY) || {
@@ -1406,55 +1509,51 @@ window.APP_RELIABLE = (function () {
     throw lastErr;
   }
 
-  // ---- Tiered cache (localStorage). Never deleted on expiry so a stale
-  // value can still serve as a last-resort fallback tier — every unique
-  // location ever looked up (weather/NASA POWER/elevation, each keyed by
-  // lat/lon) accumulates here forever, so without the eviction below it's
-  // an unbounded, slowly-growing consumer of the browser's storage quota.
-  function cacheRead(key) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (e) { return null; }
+  // ---- Tiered cache (IndexedDB, via idb.js). Never deleted on expiry so a
+  // stale value can still serve as a last-resort fallback tier — every
+  // unique location ever looked up (weather/NASA POWER/elevation, each
+  // keyed by lat/lon) accumulates here forever, so without the eviction
+  // below it's an unbounded, slowly-growing consumer of storage. IndexedDB
+  // gives this far more headroom than localStorage (hundreds of MB to
+  // low-GB instead of ~5-10MB) — the eviction stays as defense-in-depth,
+  // not as the primary defense against filling browser storage.
+  const IDB_STORE = "apiCache";
+  async function cacheRead(key) {
+    return window.APP_IDB.get(IDB_STORE, key); // already {data, fetchedAt}-shaped, or null
   }
 
   // Every entry this module ever writes has this exact {data, fetchedAt}
-  // shape, so it can be found by shape alone — no need for every caller to
-  // separately register its cache-key prefix just so cleanup can find it.
-  function scanCacheEntries() {
-    const out = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      let parsed;
-      try { parsed = JSON.parse(localStorage.getItem(k)); } catch (e) { continue; }
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof parsed.fetchedAt === "number" && "data" in parsed) {
-        out.push({ key: k, fetchedAt: parsed.fetchedAt });
-      }
-    }
-    return out;
+  // shape, so the oldest ones can be found by shape alone.
+  async function scanCacheEntries() {
+    const entries = await window.APP_IDB.getAllEntries(IDB_STORE);
+    return entries
+      .filter(e => e.value && typeof e.value === "object" && typeof e.value.fetchedAt === "number")
+      .map(e => ({ key: e.key, fetchedAt: e.value.fetchedAt }));
   }
-  function evictOldestCacheEntries(count) {
-    const victims = scanCacheEntries().sort((a, b) => a.fetchedAt - b.fetchedAt).slice(0, count);
-    victims.forEach(e => localStorage.removeItem(e.key));
+  async function evictOldestCacheEntries(count) {
+    const victims = (await scanCacheEntries()).sort((a, b) => a.fetchedAt - b.fetchedAt).slice(0, count);
+    await Promise.all(victims.map(e => window.APP_IDB.del(IDB_STORE, e.key)));
     return victims.length;
   }
-  function clearAllCache() {
-    return evictOldestCacheEntries(Infinity);
+  async function clearAllCache() {
+    const entries = await scanCacheEntries();
+    await window.APP_IDB.clearStore(IDB_STORE);
+    return entries.length;
   }
 
-  function cacheWrite(key, data) {
-    const payload = JSON.stringify({ data, fetchedAt: Date.now() });
+  async function cacheWrite(key, data) {
+    const payload = { data, fetchedAt: Date.now() };
     try {
-      localStorage.setItem(key, payload);
+      await window.APP_IDB.set(IDB_STORE, key, payload);
     } catch (e) {
-      // Quota exceeded (most likely — private mode/disabled storage would
-      // also land here, and the retry below is a harmless no-op for those).
-      // These entries are disposable and re-fetchable, unlike the user's
-      // actual design/project data, so it's safe to make room by evicting
-      // the oldest of them rather than just losing this write silently.
-      evictOldestCacheEntries(10);
-      try { localStorage.setItem(key, payload); } catch (e2) { /* still unavailable */ }
+      // Quota exceeded (rare with IndexedDB's much larger headroom, but not
+      // impossible — private mode/disabled storage would also land here,
+      // and the retry below is a harmless no-op for those). These entries
+      // are disposable and re-fetchable, unlike the user's actual design/
+      // project data, so it's safe to make room by evicting the oldest of
+      // them rather than just losing this write silently.
+      await evictOldestCacheEntries(10);
+      try { await window.APP_IDB.set(IDB_STORE, key, payload); } catch (e2) { /* still unavailable */ }
     }
   }
 
@@ -1474,7 +1573,7 @@ window.APP_RELIABLE = (function () {
   async function reliableFetch(sourceName, cacheKey, ttlMs, fetchFn, opts) {
     opts = opts || {};
     const preferCache = opts.preferCache !== false;
-    const cached = cacheRead(cacheKey);
+    const cached = await cacheRead(cacheKey);
     const ageMs = cached ? Date.now() - cached.fetchedAt : null;
     const isFresh = !!cached && ageMs <= ttlMs;
 
@@ -3130,99 +3229,111 @@ window.APP_STORE = (function () {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
-      // Most likely the quota is full of disposable weather/NASA/elevation
-      // lookups (see reliability.js) — clear all of that first and retry
-      // once before giving up, since losing the user's actual in-progress
-      // design is far worse than having to re-fetch a location's climate.
-      let recovered = false;
+      // The live design state is small on its own now that the big
+      // consumers (API cache, saved-project snapshots) live in IndexedDB —
+      // this should be rare. Best-effort async recovery: clear the
+      // disposable cache and retry once, without making save() itself
+      // async (it has many synchronous callers across the app).
       if (window.APP_RELIABLE) {
-        try {
-          window.APP_RELIABLE.clearAllCache();
-          localStorage.setItem(KEY, JSON.stringify(state));
-          recovered = true;
-        } catch (e2) { /* still full — genuinely out of room or storage disabled */ }
+        window.APP_RELIABLE.clearAllCache().then(() => {
+          try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e2) { /* still full */ }
+        }).catch(() => {});
       }
-      if (!recovered && !storageWarned && window.APP && window.APP.toast) {
+      if (!storageWarned && window.APP && window.APP.toast) {
         storageWarned = true;
-        window.APP.toast("Could not save project — browser storage is full or unavailable. Your changes may not persist.");
+        window.APP.toast("Could not save project — browser storage is full or unavailable. Retrying after freeing cached data...");
       }
     }
-    mirrorIntoProjectsList();
+    mirrorIntoProjectsList(); // fire-and-forget (IndexedDB write) — doesn't block save()'s synchronous callers
   }
 
   // Frees the disposable reliability-layer cache (weather/NASA POWER/
   // elevation lookups, never auto-evicted — see reliability.js). Exposed so
   // Settings can offer it as a manual "storage full" recovery action; save()
   // above already does this automatically the moment a write actually fails.
-  function clearCache() {
+  async function clearCache() {
     return window.APP_RELIABLE ? window.APP_RELIABLE.clearAllCache() : 0;
   }
 
   function get() { return state; }
   function reset() { state = freshState(); save(); return state; }
 
-  // ---- Multiple named projects ------------------------------------------
-  // A separate list of full-state snapshots, keyed by state.project.id.
-  // The "live" state above (areatherm_state_v2) is always whatever you're
-  // currently working on — this list is what lets you keep more than one
-  // named design and switch between them. Every save() call mirrors the
-  // live state into its matching list entry IF that project has already
-  // been explicitly saved to the list at least once (via saveAsProject) —
-  // a brand-new project doesn't appear in the list until you name it.
-  const PROJECTS_KEY = "areatherm_projects_v1";
-  function loadProjectsList() {
-    try {
-      const raw = localStorage.getItem(PROJECTS_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) { return []; }
+  // ---- Multiple named projects (IndexedDB, via idb.js) -------------------
+  // A separate store of full-state snapshots, one row per project id. The
+  // "live" state above (areatherm_state_v2, still localStorage — small and
+  // needs to be available synchronously at startup) is always whatever
+  // you're currently working on; this store is what lets you keep more
+  // than one named design and switch between them. Every save() call
+  // mirrors the live state into its matching row IF that project has
+  // already been explicitly saved at least once (via saveAsProject) — a
+  // brand-new project doesn't appear in the list until you name it.
+  //
+  // listProjects() is called synchronously from a render path (Settings),
+  // so it reads from this in-memory mirror rather than IndexedDB directly;
+  // every mutation below updates the mirror immediately (before the
+  // IndexedDB write even resolves) so a render right after a mutation
+  // always sees it, and refreshProjectsCache() re-syncs it from IndexedDB
+  // at startup and after the one-time localStorage migration.
+  const PROJECTS_STORE = "projects";
+  const OLD_PROJECTS_KEY = "areatherm_projects_v1"; // pre-IndexedDB location — migrated once below, then removed
+  let projectsCache = [];
+
+  async function refreshProjectsCache() {
+    const entries = await window.APP_IDB.getAllEntries(PROJECTS_STORE);
+    projectsCache = entries.map(e => e.value).filter(Boolean);
   }
-  function writeProjectsList(list) {
+  async function migrateOldProjectsListOnce() {
     try {
-      localStorage.setItem(PROJECTS_KEY, JSON.stringify(list));
-    } catch (e) {
-      if (window.APP_RELIABLE) {
-        try { window.APP_RELIABLE.clearAllCache(); localStorage.setItem(PROJECTS_KEY, JSON.stringify(list)); } catch (e2) { /* still unavailable */ }
+      const raw = localStorage.getItem(OLD_PROJECTS_KEY);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          for (const p of list) { if (p && p.id) await window.APP_IDB.set(PROJECTS_STORE, p.id, p); }
+        }
+        localStorage.removeItem(OLD_PROJECTS_KEY);
       }
-    }
+    } catch (e) { /* nothing to migrate, or storage unavailable */ }
+    await refreshProjectsCache();
   }
+  migrateOldProjectsListOnce();
+
   function mirrorIntoProjectsList() {
     if (!state.project || !state.project.id) return;
-    const list = loadProjectsList();
-    const idx = list.findIndex(p => p.id === state.project.id);
+    const idx = projectsCache.findIndex(p => p.id === state.project.id);
     if (idx === -1) return; // not saved as a named project yet — nothing to mirror into
-    list[idx] = { id: state.project.id, name: state.project.name, updatedAt: new Date().toISOString(), snapshot: state };
-    writeProjectsList(list);
+    const entry = { id: state.project.id, name: state.project.name, updatedAt: new Date().toISOString(), snapshot: state };
+    projectsCache[idx] = entry;
+    window.APP_IDB.set(PROJECTS_STORE, entry.id, entry).catch(() => {});
   }
   function listProjects() {
-    return loadProjectsList()
+    return projectsCache
       .map(p => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, isCurrent: state.project && state.project.id === p.id }))
       .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   }
-  function saveAsProject(name) {
+  async function saveAsProject(name) {
     if (!state.project.id) state.project.id = genId("proj");
     if (name) state.project.name = name;
-    const list = loadProjectsList();
-    const idx = list.findIndex(p => p.id === state.project.id);
     const entry = { id: state.project.id, name: state.project.name, updatedAt: new Date().toISOString(), snapshot: state };
-    if (idx === -1) list.push(entry); else list[idx] = entry;
-    writeProjectsList(list);
+    const idx = projectsCache.findIndex(p => p.id === state.project.id);
+    if (idx === -1) projectsCache.push(entry); else projectsCache[idx] = entry;
+    try { await window.APP_IDB.set(PROJECTS_STORE, entry.id, entry); } catch (e) { /* storage unavailable */ }
     save();
   }
-  function loadProject(id) {
-    const list = loadProjectsList();
-    const entry = list.find(p => p.id === id);
+  async function loadProject(id) {
+    const entry = projectsCache.find(p => p.id === id);
     if (!entry) return false;
     state = Object.assign(freshState(), JSON.parse(JSON.stringify(entry.snapshot)));
     save();
     return true;
   }
-  function deleteProject(id) {
-    writeProjectsList(loadProjectsList().filter(p => p.id !== id));
+  async function deleteProject(id) {
+    projectsCache = projectsCache.filter(p => p.id !== id);
+    await window.APP_IDB.del(PROJECTS_STORE, id);
   }
-  function newProject(name) {
+  async function newProject(name) {
     state = freshState();
     state.project.name = name || "Untitled Project";
-    saveAsProject(state.project.name);
+    await saveAsProject(state.project.name);
     return state;
   }
 
@@ -5948,21 +6059,31 @@ window.UI = window.UI || {};
   };
 
   // ---------------------------------------------------------------------
-  function localStorageUsageKB() {
-    let total = 0;
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        total += k.length + (localStorage.getItem(k) || "").length;
-      }
-    } catch (e) { return null; }
-    return Math.round(total / 1024);
+  // Origin storage usage across everything (IndexedDB + localStorage) —
+  // navigator.storage.estimate() is async, so this reads a cached value and
+  // kicks off (at most once per empty state) a fetch that triggers one
+  // re-render when it resolves, rather than blocking or polling on it.
+  let storageEstimate = null; // null | "loading" | "unsupported" | {usageKB, quotaKB}
+  function loadStorageEstimateOnce() {
+    if (storageEstimate !== null) return;
+    if (!(navigator.storage && navigator.storage.estimate)) { storageEstimate = "unsupported"; return; }
+    storageEstimate = "loading";
+    navigator.storage.estimate().then(est => {
+      storageEstimate = { usageKB: Math.round((est.usage || 0) / 1024), quotaKB: Math.round((est.quota || 0) / 1024) };
+      window.APP.render();
+    }).catch(() => { storageEstimate = "unsupported"; });
+  }
+  function storageUsageLabel() {
+    if (storageEstimate === "loading" || storageEstimate === null) return "calculating…";
+    if (storageEstimate === "unsupported") return "unavailable in this browser";
+    const { usageKB, quotaKB } = storageEstimate;
+    return `${usageKB.toLocaleString()} KB used${quotaKB ? ` of ~${Math.round(quotaKB / 1024).toLocaleString()} MB available` : ""}`;
   }
 
   UI.renderSettings = function (root) {
     const s = STORE.get();
     const projects = STORE.listProjects();
-    const storageKB = localStorageUsageKB();
+    loadStorageEstimateOnce();
     root.innerHTML = `
       <h1>Settings</h1>
       <div class="grid grid-2">
@@ -6033,7 +6154,7 @@ window.UI = window.UI || {};
           <li>Fallback chain: live fetch → fresh cache → stale cache → a clear error message. The data-source badge always reflects which tier actually served the number.</li>
           <li>Every simulation input is validated (positive dimensions/thickness, valid comfort range, valid coordinates) before it reaches the physics solver, with a specific on-screen message instead of a crash.</li>
         </ul>
-        <p class="hint" style="margin-top:10px;">Cached weather/NASA POWER/elevation lookups are kept indefinitely as an offline fallback and are never deleted automatically — after enough different locations they can fill the browser's storage quota, which then blocks new saves (designs, simulations stop persisting). Browser storage used: <b>${storageKB == null ? "unavailable" : storageKB + " KB"}</b>.</p>
+        <p class="hint" style="margin-top:10px;">Cached weather/NASA POWER/elevation lookups are kept indefinitely as an offline fallback and are never deleted automatically — after enough different locations this can add up, which is why it's stored in IndexedDB (hundreds of MB to low-GB of headroom) rather than the much smaller localStorage. Browser storage used: <b>${storageUsageLabel()}</b>.</p>
         <button class="btn btn-sm" id="clearCacheBtn">Clear cached location data</button>
       </div>
 
@@ -6083,8 +6204,9 @@ window.UI = window.UI || {};
     U.on("#unitsMetricBtn", "click", () => { s.units = "METRIC"; STORE.save(); window.APP.render(); }, root);
     U.on("#unitsImperialBtn", "click", () => { s.units = "IMPERIAL"; STORE.save(); window.APP.render(); }, root);
     U.on("#saveProjNameBtn", "click", () => { s.project.name = U.qs("#projNameInput", root).value; STORE.save(); window.APP.render(); }, root);
-    U.on("#clearCacheBtn", "click", () => {
-      const freed = STORE.clearCache();
+    U.on("#clearCacheBtn", "click", async () => {
+      const freed = await STORE.clearCache();
+      storageEstimate = null; // force a fresh usage readout to reflect the clear
       window.APP.toast(freed ? `Cleared ${freed} cached location lookup${freed === 1 ? "" : "s"} — the next simulation will re-fetch live data as needed.` : "No cached location data to clear.");
       window.APP.render();
     }, root);
@@ -6093,32 +6215,32 @@ window.UI = window.UI || {};
         STORE.reset(); window.APP.render();
       }
     }, root);
-    U.on("#newProjectBtn", "click", () => {
+    U.on("#newProjectBtn", "click", async () => {
       const name = U.qs("#newProjName", root).value.trim();
       if (!name) { alert("Enter a name for the new project."); return; }
-      STORE.newProject(name);
+      await STORE.newProject(name);
       window.APP.render();
       window.APP.toast(`New project "${name}" created and set as current.`);
     }, root);
-    U.on("#saveCurrentAsProjectBtn", "click", () => {
-      STORE.saveAsProject(s.project.name);
+    U.on("#saveCurrentAsProjectBtn", "click", async () => {
+      await STORE.saveAsProject(s.project.name);
       window.APP.render();
       window.APP.toast(`"${s.project.name}" saved to your projects list.`);
     }, root);
-    U.qsa("[data-load-proj]", root).forEach(btn => btn.addEventListener("click", () => {
+    U.qsa("[data-load-proj]", root).forEach(btn => btn.addEventListener("click", async () => {
       const id = btn.dataset.loadProj;
       const proj = projects.find(p => p.id === id);
       if (proj && !confirm(`Switch to "${proj.name}"? Your current design is already saved and won't be lost.`)) return;
-      STORE.loadProject(id);
+      await STORE.loadProject(id);
       window.APP.applyTheme();
       window.APP.render();
       window.APP.toast(`Loaded "${proj ? proj.name : "project"}".`);
     }));
-    U.qsa("[data-delete-proj]", root).forEach(btn => btn.addEventListener("click", () => {
+    U.qsa("[data-delete-proj]", root).forEach(btn => btn.addEventListener("click", async () => {
       const id = btn.dataset.deleteProj;
       const proj = projects.find(p => p.id === id);
       if (!confirm(`Delete the saved project "${proj ? proj.name : ""}"? This only removes it from your saved list — it won't affect your current work.`)) return;
-      STORE.deleteProject(id);
+      await STORE.deleteProject(id);
       window.APP.render();
       window.APP.toast("Project deleted.");
     }));

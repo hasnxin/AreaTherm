@@ -4,8 +4,9 @@
    (live -> fresh cache -> stale cache -> clear error). Used by
    weather-api.js, nasa-power.js, and elevation.js so a slow or unreachable
    network degrades gracefully instead of freezing the UI or crashing the
-   live demo. Pure/no DOM, so it also has no dependency on the rest of the
-   app beyond APP_CONFIG.RELIABILITY. */
+   live demo. The cache itself lives in IndexedDB (see idb.js) rather than
+   localStorage, so this module's only other dependency beyond
+   APP_CONFIG.RELIABILITY is window.APP_IDB. */
 
 window.APP_RELIABLE = (function () {
   const CFG = (window.APP_CONFIG && window.APP_CONFIG.RELIABILITY) || {
@@ -79,55 +80,51 @@ window.APP_RELIABLE = (function () {
     throw lastErr;
   }
 
-  // ---- Tiered cache (localStorage). Never deleted on expiry so a stale
-  // value can still serve as a last-resort fallback tier — every unique
-  // location ever looked up (weather/NASA POWER/elevation, each keyed by
-  // lat/lon) accumulates here forever, so without the eviction below it's
-  // an unbounded, slowly-growing consumer of the browser's storage quota.
-  function cacheRead(key) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (e) { return null; }
+  // ---- Tiered cache (IndexedDB, via idb.js). Never deleted on expiry so a
+  // stale value can still serve as a last-resort fallback tier — every
+  // unique location ever looked up (weather/NASA POWER/elevation, each
+  // keyed by lat/lon) accumulates here forever, so without the eviction
+  // below it's an unbounded, slowly-growing consumer of storage. IndexedDB
+  // gives this far more headroom than localStorage (hundreds of MB to
+  // low-GB instead of ~5-10MB) — the eviction stays as defense-in-depth,
+  // not as the primary defense against filling browser storage.
+  const IDB_STORE = "apiCache";
+  async function cacheRead(key) {
+    return window.APP_IDB.get(IDB_STORE, key); // already {data, fetchedAt}-shaped, or null
   }
 
   // Every entry this module ever writes has this exact {data, fetchedAt}
-  // shape, so it can be found by shape alone — no need for every caller to
-  // separately register its cache-key prefix just so cleanup can find it.
-  function scanCacheEntries() {
-    const out = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      let parsed;
-      try { parsed = JSON.parse(localStorage.getItem(k)); } catch (e) { continue; }
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof parsed.fetchedAt === "number" && "data" in parsed) {
-        out.push({ key: k, fetchedAt: parsed.fetchedAt });
-      }
-    }
-    return out;
+  // shape, so the oldest ones can be found by shape alone.
+  async function scanCacheEntries() {
+    const entries = await window.APP_IDB.getAllEntries(IDB_STORE);
+    return entries
+      .filter(e => e.value && typeof e.value === "object" && typeof e.value.fetchedAt === "number")
+      .map(e => ({ key: e.key, fetchedAt: e.value.fetchedAt }));
   }
-  function evictOldestCacheEntries(count) {
-    const victims = scanCacheEntries().sort((a, b) => a.fetchedAt - b.fetchedAt).slice(0, count);
-    victims.forEach(e => localStorage.removeItem(e.key));
+  async function evictOldestCacheEntries(count) {
+    const victims = (await scanCacheEntries()).sort((a, b) => a.fetchedAt - b.fetchedAt).slice(0, count);
+    await Promise.all(victims.map(e => window.APP_IDB.del(IDB_STORE, e.key)));
     return victims.length;
   }
-  function clearAllCache() {
-    return evictOldestCacheEntries(Infinity);
+  async function clearAllCache() {
+    const entries = await scanCacheEntries();
+    await window.APP_IDB.clearStore(IDB_STORE);
+    return entries.length;
   }
 
-  function cacheWrite(key, data) {
-    const payload = JSON.stringify({ data, fetchedAt: Date.now() });
+  async function cacheWrite(key, data) {
+    const payload = { data, fetchedAt: Date.now() };
     try {
-      localStorage.setItem(key, payload);
+      await window.APP_IDB.set(IDB_STORE, key, payload);
     } catch (e) {
-      // Quota exceeded (most likely — private mode/disabled storage would
-      // also land here, and the retry below is a harmless no-op for those).
-      // These entries are disposable and re-fetchable, unlike the user's
-      // actual design/project data, so it's safe to make room by evicting
-      // the oldest of them rather than just losing this write silently.
-      evictOldestCacheEntries(10);
-      try { localStorage.setItem(key, payload); } catch (e2) { /* still unavailable */ }
+      // Quota exceeded (rare with IndexedDB's much larger headroom, but not
+      // impossible — private mode/disabled storage would also land here,
+      // and the retry below is a harmless no-op for those). These entries
+      // are disposable and re-fetchable, unlike the user's actual design/
+      // project data, so it's safe to make room by evicting the oldest of
+      // them rather than just losing this write silently.
+      await evictOldestCacheEntries(10);
+      try { await window.APP_IDB.set(IDB_STORE, key, payload); } catch (e2) { /* still unavailable */ }
     }
   }
 
@@ -147,7 +144,7 @@ window.APP_RELIABLE = (function () {
   async function reliableFetch(sourceName, cacheKey, ttlMs, fetchFn, opts) {
     opts = opts || {};
     const preferCache = opts.preferCache !== false;
-    const cached = cacheRead(cacheKey);
+    const cached = await cacheRead(cacheKey);
     const ageMs = cached ? Date.now() - cached.fetchedAt : null;
     const isFresh = !!cached && ageMs <= ttlMs;
 

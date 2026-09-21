@@ -93,99 +93,111 @@ window.APP_STORE = (function () {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
-      // Most likely the quota is full of disposable weather/NASA/elevation
-      // lookups (see reliability.js) — clear all of that first and retry
-      // once before giving up, since losing the user's actual in-progress
-      // design is far worse than having to re-fetch a location's climate.
-      let recovered = false;
+      // The live design state is small on its own now that the big
+      // consumers (API cache, saved-project snapshots) live in IndexedDB —
+      // this should be rare. Best-effort async recovery: clear the
+      // disposable cache and retry once, without making save() itself
+      // async (it has many synchronous callers across the app).
       if (window.APP_RELIABLE) {
-        try {
-          window.APP_RELIABLE.clearAllCache();
-          localStorage.setItem(KEY, JSON.stringify(state));
-          recovered = true;
-        } catch (e2) { /* still full — genuinely out of room or storage disabled */ }
+        window.APP_RELIABLE.clearAllCache().then(() => {
+          try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e2) { /* still full */ }
+        }).catch(() => {});
       }
-      if (!recovered && !storageWarned && window.APP && window.APP.toast) {
+      if (!storageWarned && window.APP && window.APP.toast) {
         storageWarned = true;
-        window.APP.toast("Could not save project — browser storage is full or unavailable. Your changes may not persist.");
+        window.APP.toast("Could not save project — browser storage is full or unavailable. Retrying after freeing cached data...");
       }
     }
-    mirrorIntoProjectsList();
+    mirrorIntoProjectsList(); // fire-and-forget (IndexedDB write) — doesn't block save()'s synchronous callers
   }
 
   // Frees the disposable reliability-layer cache (weather/NASA POWER/
   // elevation lookups, never auto-evicted — see reliability.js). Exposed so
   // Settings can offer it as a manual "storage full" recovery action; save()
   // above already does this automatically the moment a write actually fails.
-  function clearCache() {
+  async function clearCache() {
     return window.APP_RELIABLE ? window.APP_RELIABLE.clearAllCache() : 0;
   }
 
   function get() { return state; }
   function reset() { state = freshState(); save(); return state; }
 
-  // ---- Multiple named projects ------------------------------------------
-  // A separate list of full-state snapshots, keyed by state.project.id.
-  // The "live" state above (areatherm_state_v2) is always whatever you're
-  // currently working on — this list is what lets you keep more than one
-  // named design and switch between them. Every save() call mirrors the
-  // live state into its matching list entry IF that project has already
-  // been explicitly saved to the list at least once (via saveAsProject) —
-  // a brand-new project doesn't appear in the list until you name it.
-  const PROJECTS_KEY = "areatherm_projects_v1";
-  function loadProjectsList() {
-    try {
-      const raw = localStorage.getItem(PROJECTS_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) { return []; }
+  // ---- Multiple named projects (IndexedDB, via idb.js) -------------------
+  // A separate store of full-state snapshots, one row per project id. The
+  // "live" state above (areatherm_state_v2, still localStorage — small and
+  // needs to be available synchronously at startup) is always whatever
+  // you're currently working on; this store is what lets you keep more
+  // than one named design and switch between them. Every save() call
+  // mirrors the live state into its matching row IF that project has
+  // already been explicitly saved at least once (via saveAsProject) — a
+  // brand-new project doesn't appear in the list until you name it.
+  //
+  // listProjects() is called synchronously from a render path (Settings),
+  // so it reads from this in-memory mirror rather than IndexedDB directly;
+  // every mutation below updates the mirror immediately (before the
+  // IndexedDB write even resolves) so a render right after a mutation
+  // always sees it, and refreshProjectsCache() re-syncs it from IndexedDB
+  // at startup and after the one-time localStorage migration.
+  const PROJECTS_STORE = "projects";
+  const OLD_PROJECTS_KEY = "areatherm_projects_v1"; // pre-IndexedDB location — migrated once below, then removed
+  let projectsCache = [];
+
+  async function refreshProjectsCache() {
+    const entries = await window.APP_IDB.getAllEntries(PROJECTS_STORE);
+    projectsCache = entries.map(e => e.value).filter(Boolean);
   }
-  function writeProjectsList(list) {
+  async function migrateOldProjectsListOnce() {
     try {
-      localStorage.setItem(PROJECTS_KEY, JSON.stringify(list));
-    } catch (e) {
-      if (window.APP_RELIABLE) {
-        try { window.APP_RELIABLE.clearAllCache(); localStorage.setItem(PROJECTS_KEY, JSON.stringify(list)); } catch (e2) { /* still unavailable */ }
+      const raw = localStorage.getItem(OLD_PROJECTS_KEY);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          for (const p of list) { if (p && p.id) await window.APP_IDB.set(PROJECTS_STORE, p.id, p); }
+        }
+        localStorage.removeItem(OLD_PROJECTS_KEY);
       }
-    }
+    } catch (e) { /* nothing to migrate, or storage unavailable */ }
+    await refreshProjectsCache();
   }
+  migrateOldProjectsListOnce();
+
   function mirrorIntoProjectsList() {
     if (!state.project || !state.project.id) return;
-    const list = loadProjectsList();
-    const idx = list.findIndex(p => p.id === state.project.id);
+    const idx = projectsCache.findIndex(p => p.id === state.project.id);
     if (idx === -1) return; // not saved as a named project yet — nothing to mirror into
-    list[idx] = { id: state.project.id, name: state.project.name, updatedAt: new Date().toISOString(), snapshot: state };
-    writeProjectsList(list);
+    const entry = { id: state.project.id, name: state.project.name, updatedAt: new Date().toISOString(), snapshot: state };
+    projectsCache[idx] = entry;
+    window.APP_IDB.set(PROJECTS_STORE, entry.id, entry).catch(() => {});
   }
   function listProjects() {
-    return loadProjectsList()
+    return projectsCache
       .map(p => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, isCurrent: state.project && state.project.id === p.id }))
       .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   }
-  function saveAsProject(name) {
+  async function saveAsProject(name) {
     if (!state.project.id) state.project.id = genId("proj");
     if (name) state.project.name = name;
-    const list = loadProjectsList();
-    const idx = list.findIndex(p => p.id === state.project.id);
     const entry = { id: state.project.id, name: state.project.name, updatedAt: new Date().toISOString(), snapshot: state };
-    if (idx === -1) list.push(entry); else list[idx] = entry;
-    writeProjectsList(list);
+    const idx = projectsCache.findIndex(p => p.id === state.project.id);
+    if (idx === -1) projectsCache.push(entry); else projectsCache[idx] = entry;
+    try { await window.APP_IDB.set(PROJECTS_STORE, entry.id, entry); } catch (e) { /* storage unavailable */ }
     save();
   }
-  function loadProject(id) {
-    const list = loadProjectsList();
-    const entry = list.find(p => p.id === id);
+  async function loadProject(id) {
+    const entry = projectsCache.find(p => p.id === id);
     if (!entry) return false;
     state = Object.assign(freshState(), JSON.parse(JSON.stringify(entry.snapshot)));
     save();
     return true;
   }
-  function deleteProject(id) {
-    writeProjectsList(loadProjectsList().filter(p => p.id !== id));
+  async function deleteProject(id) {
+    projectsCache = projectsCache.filter(p => p.id !== id);
+    await window.APP_IDB.del(PROJECTS_STORE, id);
   }
-  function newProject(name) {
+  async function newProject(name) {
     state = freshState();
     state.project.name = name || "Untitled Project";
-    saveAsProject(state.project.name);
+    await saveAsProject(state.project.name);
     return state;
   }
 
