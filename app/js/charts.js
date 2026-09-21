@@ -143,22 +143,38 @@ window.APP_CHARTS = (function () {
     }
   }
 
+  // Diverging (tornado-style) horizontal bar chart — items can be positive
+  // or negative (e.g. sensitivity-analysis deltas). The zero line sits
+  // inside its own plot region, separate from the label column, and is
+  // centred when values run both ways so a bar's rect (and its value text,
+  // drawn past the bar's outer tip) can never reach back far enough to
+  // collide with — or be painted over by — the category label to its left.
   function barChart(container, items, opts) {
     opts = opts || {};
     const width = opts.width || 560, barH = 26, gap = 10;
     const height = items.length * (barH + gap) + 20;
-    const ml = opts.labelWidth || 170, mr = 60;
-    const plotW = width - ml - mr;
+    // mlGap reserves room, symmetric with mr on the right, for a negative
+    // bar's value text — without it, the max-magnitude negative bar's rect
+    // (and the value text just past its tip) reaches exactly back to the
+    // label column and collides with it.
+    const ml = opts.labelWidth || 170, mr = 60, mlGap = 50;
+    const plotL = ml + mlGap, plotR = width - mr;
+    const plotW = plotR - plotL;
     const maxAbs = Math.max(1, ...items.map(i => Math.abs(i.value)));
+    const hasNeg = items.some(i => i.value < 0);
+    const hasPos = items.some(i => i.value >= 0);
+    const zeroX = hasNeg && hasPos ? plotL + plotW / 2 : (hasNeg ? plotR : plotL);
+    const halfW = hasNeg && hasPos ? plotW / 2 : plotW;
     const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart-svg" });
     items.forEach((it, i) => {
       const y = 10 + i * (barH + gap);
       svg.appendChild(textEl(ml - 10, y + barH / 2 + 4, it.label, "chart-tick", "end"));
-      const w = (Math.abs(it.value) / maxAbs) * plotW;
-      const x = it.value >= 0 ? ml : ml - w;
+      const w = (Math.abs(it.value) / maxAbs) * halfW;
+      const x = it.value >= 0 ? zeroX : zeroX - w;
       svg.appendChild(el("rect", { x, y, width: Math.max(1, w), height: barH, class: it.value >= 0 ? "chart-bar-pos" : "chart-bar-neg" }));
-      svg.appendChild(textEl(ml + (it.value >= 0 ? w + 6 : -w - 6), y + barH / 2 + 4, (it.value >= 0 ? "+" : "") + it.value, "chart-tick", it.value >= 0 ? "start" : "end"));
+      svg.appendChild(textEl(zeroX + (it.value >= 0 ? w + 6 : -w - 6), y + barH / 2 + 4, (it.value >= 0 ? "+" : "") + it.value, "chart-tick", it.value >= 0 ? "start" : "end"));
     });
+    if (hasNeg && hasPos) svg.appendChild(el("line", { x1: zeroX, y1: 4, x2: zeroX, y2: height - 4, class: "chart-axis" }));
     container.innerHTML = "";
     container.appendChild(svg);
   }
