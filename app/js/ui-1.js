@@ -321,7 +321,7 @@ window.UI = window.UI || {};
           <button class="btn btn-accent" id="loadRealBtn">🌐 Load Real Weather (Open-Meteo)</button>
           <span id="fetchStatus" class="hint"></span>
         </div>
-        <div id="locationMap" style="height:260px; border-radius:4px; margin-top:12px; z-index:0;"></div>
+        <div id="locationMap" style="height:260px; border-radius:var(--radius-card); overflow:hidden; margin-top:12px; z-index:0;"></div>
         <p class="hint" style="margin-top:6px;">Click a pin to load that location's live weather. Map tiles © <a href="https://www.esri.com" target="_blank" rel="noopener" style="color:var(--accent);">Esri</a>.</p>
         <p class="hint" style="margin-top:10px;">Live weather from
         <a href="https://open-meteo.com" target="_blank" rel="noopener" style="color:var(--accent);">Open-Meteo</a>
@@ -846,7 +846,7 @@ window.UI = window.UI || {};
           </div>
           <div class="card" style="margin-top:16px;">
             <h3>3D Preview <span class="tag tag-demo">illustrative</span></h3>
-            <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:4px; cursor:grab;"></canvas>
+            <canvas id="shelter3dCanvas" style="width:100%; height:280px; display:block; border-radius:var(--radius-card); cursor:grab;"></canvas>
             <p class="hint" id="shelter3dStatus" hidden></p>
             <p class="hint" style="margin-top:6px;">Drag to rotate, scroll to zoom. The sun's position matches the shelter's actual orientation (${d.orientation}${d.orientation === "CUSTOM" ? ", " + (d.azimuthDeg || 0) + "°" : ""}). Doors and each window group below are shown on their own configured face — each window group's face also drives its own share of the actual solar-gain calculation elsewhere in the app; door orientation is visual only, since door heat loss is modeled as orientation-independent. ${d.shape === "DOME" ? "The dome's roof is domed above wall height only — its floor and volume are modeled the same as a straight-walled shelter of the same footprint, matching the underlying thermal calculation." : (d.shape === "CIRCULAR" || d.shape === "SEMI_CIRCULAR") ? "Shown as a flat-roofed cylinder — SEMI_CIRCULAR uses the same footprint as CIRCULAR in the underlying thermal model." : d.shape === "L_SHAPE" ? "Openings on the L-shape's two inner step edges aren't placeable — Front/Back/Left/Right map onto the shape's four outer edges only." : ""}</p>
           </div>

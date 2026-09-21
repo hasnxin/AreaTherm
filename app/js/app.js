@@ -74,7 +74,7 @@ window.APP = (function () {
     if (!t) {
       t = document.createElement("div");
       t.id = "appToast";
-      t.style.cssText = "position:fixed;bottom:20px;right:24px;background:#212121;color:#fff;padding:10px 16px;border-radius:4px;font-size:12.5px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s;display:flex;align-items:center;gap:12px;max-width:360px;";
+      t.style.cssText = "position:fixed;bottom:20px;right:24px;background:#212121;color:#fff;padding:10px 16px;border-radius:var(--radius-card);font-size:12.5px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s;display:flex;align-items:center;gap:12px;max-width:360px;";
       document.body.appendChild(t);
     }
     t.innerHTML = "";
@@ -84,7 +84,7 @@ window.APP = (function () {
     if (opts.actionLabel && opts.onAction) {
       const btn = document.createElement("button");
       btn.textContent = opts.actionLabel;
-      btn.style.cssText = "background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:5px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;flex:none;";
+      btn.style.cssText = "background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:var(--radius-btn);padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;flex:none;";
       btn.addEventListener("click", opts.onAction);
       t.appendChild(btn);
     }

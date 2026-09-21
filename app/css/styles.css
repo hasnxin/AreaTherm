@@ -102,7 +102,7 @@ body.mode-advanced .nav a.nav-advanced-only{display:block;}
 /* Always visible (not just <=860px) — on desktop it collapses the sidebar
    in place for more content width, via .app-shell.sidebar-collapsed below;
    on mobile it opens/closes the off-canvas drawer, via .sidebar.open. */
-.menu-toggle{display:inline-flex; align-items:center; justify-content:center; background:none; border:none; font-size:20px; line-height:1; color:var(--text); padding:4px 6px; border-radius:6px; flex-shrink:0;}
+.menu-toggle{display:inline-flex; align-items:center; justify-content:center; background:none; border:none; font-size:20px; line-height:1; color:var(--text); padding:4px 6px; border-radius:8px; flex-shrink:0;}
 .menu-toggle:hover{background:var(--bg);}
 /* Desktop sidebar collapse — a separate, opposite-polarity toggle from the
    mobile drawer below (this one starts open and collapses; that one starts
@@ -144,9 +144,14 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
 
 /* Grid / cards */
 .grid{display:grid; gap:16px;}
-.grid-4{grid-template-columns:repeat(4,1fr);}
-.grid-3{grid-template-columns:repeat(3,1fr);}
-.grid-2{grid-template-columns:repeat(2,1fr);}
+/* minmax(0,1fr), not a bare 1fr: a grid item's default min-width is "auto",
+   which lets a wide child (a <select>'s longest option, a long unbroken
+   string) hold its column open past 1fr and overflow the page horizontally.
+   minmax(0,...) lets the track actually shrink to the space available —
+   pure layout-safety, invisible whenever content already fits. */
+.grid-4{grid-template-columns:repeat(4,minmax(0,1fr));}
+.grid-3{grid-template-columns:repeat(3,minmax(0,1fr));}
+.grid-2{grid-template-columns:repeat(2,minmax(0,1fr));}
 @media (max-width:1024px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-3{grid-template-columns:repeat(2,1fr);}}
 
 .card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-card); padding:16px 18px; box-shadow:var(--shadow-sm);}
@@ -182,7 +187,7 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
 .form-row{display:flex; flex-direction:column; gap:5px; margin-bottom:12px;}
 .form-row label{font-size:11.5px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.02em;}
 .form-row input, .form-row select, .form-row textarea{
-  padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-card); font-size:13px; background:var(--input-bg); color:var(--text); font-family:inherit;
+  width:100%; min-width:0; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-card); font-size:13px; background:var(--input-bg); color:var(--text); font-family:inherit;
 }
 .form-row .hint{font-size:11px; color:var(--text-faint); font-weight:400; text-transform:none;}
 .form-inline{display:flex; gap:12px; flex-wrap:wrap;}
@@ -262,7 +267,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .hero .cta-row{margin-top:22px; display:flex; gap:10px;}
 
 .workflow-compare{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:18px 0;}
-.workflow-col{border-radius:10px; padding:16px 18px;}
+.workflow-col{border-radius:var(--radius-card); padding:16px 18px;}
 .workflow-col.old{background:var(--workflow-old-bg); border:1px solid var(--workflow-old-border);}
 .workflow-col.new{background:var(--workflow-new-bg); border:1px solid var(--workflow-new-border);}
 .workflow-col .step{padding:6px 0; font-size:12.5px; font-weight:600;}
@@ -275,7 +280,7 @@ td.num{font-family:var(--mono); text-align:right;}
 .badge-source{font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:700; text-transform:uppercase;}
 
 /* Validation errors */
-.validation-errors{ background:var(--error-bg); border:1px solid var(--error-border); border-radius:8px; padding:10px 14px; margin:10px 0; font-size:12.5px; color:var(--bad); }
+.validation-errors{ background:var(--error-bg); border:1px solid var(--error-border); border-radius:var(--radius-card); padding:10px 14px; margin:10px 0; font-size:12.5px; color:var(--bad); }
 .validation-errors ul{ margin:4px 0 0; padding-left:18px; }
 .validation-errors li{ margin-bottom:2px; }
 [data-field-invalid]{ border-color:var(--bad) !important; box-shadow:0 0 0 2px rgba(211,47,47,.15); }
