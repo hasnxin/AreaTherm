@@ -4334,23 +4334,69 @@ window.UI = window.UI || {};
     wireGuidedNav(root, () => { guidedStep = 2; window.APP.render(); });
   }
 
+  // Same shape/orientation/openings capability as the Advanced Shelter
+  // Designer (UI.renderDesigner) — the wizard used to only expose length/
+  // width/height/facing, silently discarding shape, windows and doors set
+  // elsewhere. Occupancy and air leakage stay off this step: occupancy has
+  // its own Guided step (Comfort), and air leakage is a technical rate most
+  // non-engineers wouldn't know how to set meaningfully — left at its
+  // sensible default, fine-tunable in the Advanced Designer.
   function renderGuidedShelter(root, s) {
     const d = s.design;
+    const glazeOpts = DATA.materialsByCategory("WINDOW").map(m => `<option value="${m.id}" ${d.windows[0].glazingMaterialId === m.id ? "selected" : ""}>${m.name} (U=${m.uValue}, SHGC=${m.shgc})</option>`).join("");
     root.innerHTML = `
       <h1>Guided Setup</h1>
       ${guidedStepBar(2)}
       <div class="grid grid-2">
         <div class="card">
           <h3>Step 2 — Define Your Shelter</h3>
-          <div class="form-inline">
+          <div class="form-row"><label>Shape</label>
+            <select id="gShape">
+              ${["RECTANGULAR","SQUARE","CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].map(v => `<option value="${v}" ${d.shape===v?"selected":""}>${v.replace("_"," ")}</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-inline" id="gRectFields" style="${["CIRCULAR","DOME","SEMI_CIRCULAR","L_SHAPE"].includes(d.shape)?"display:none;":""}">
             <div class="form-row"><label>Length (m)</label><input id="gLength" type="number" step="0.1" value="${d.length}"></div>
             <div class="form-row"><label>Width (m)</label><input id="gWidth" type="number" step="0.1" value="${d.width}"></div>
             <div class="form-row"><label>Height (m)</label><input id="gHeight" type="number" step="0.1" value="${d.height}"></div>
           </div>
-          <div class="form-row"><label>Facing direction</label>
-            <select id="gOrientation">${["SOUTH","EAST","NORTH","WEST"].map(v => `<option value="${v}" ${d.orientation===v?"selected":""}>${v}</option>`).join("")}</select>
+          <div class="form-inline" id="gRoundFields" style="${["CIRCULAR","DOME","SEMI_CIRCULAR"].includes(d.shape)?"":"display:none;"}">
+            <div class="form-row"><label>Diameter (m)</label><input id="gDiameter" type="number" step="0.1" value="${d.diameter || 5}"></div>
+            <div class="form-row"><label>Height (m)</label><input id="gHeight2" type="number" step="0.1" value="${d.height}"></div>
+          </div>
+          <div class="form-inline" id="gLshapeFields" style="${d.shape === "L_SHAPE" ? "" : "display:none;"}">
+            <div class="form-row"><label>Wing A length (m)</label><input id="gLengthA" type="number" step="0.1" value="${d.lengthA || 4}"></div>
+            <div class="form-row"><label>Wing A width (m)</label><input id="gWidthA" type="number" step="0.1" value="${d.widthA || 4}"></div>
+            <div class="form-row"><label>Wing B length (m)</label><input id="gLengthB" type="number" step="0.1" value="${d.lengthB || 3}"></div>
+            <div class="form-row"><label>Wing B width (m)</label><input id="gWidthB" type="number" step="0.1" value="${d.widthB || 3}"></div>
+            <div class="form-row"><label>Height (m)</label><input id="gHeight3" type="number" step="0.1" value="${d.height}"></div>
+          </div>
+          ${d.shape === "L_SHAPE" ? `<p class="hint">Simplified: modeled as one thermal zone with a single combined wall face. Wing B's width must be ≤ Wing A's length.</p>` : ""}
+
+          <h3 style="margin-top:16px;">Orientation</h3>
+          <div class="form-inline">
+            <div class="form-row"><label>Facing direction</label>
+              <select id="gOrientation">${["SOUTH","SE","EAST","NE","NORTH","NW","WEST","SW","CUSTOM"].map(v => `<option value="${v}" ${d.orientation===v?"selected":""}>${v}</option>`).join("")}</select>
+            </div>
+            <div class="form-row" id="gAzimuthRow" style="${d.orientation==="CUSTOM"?"":"display:none;"}"><label>Custom azimuth (° from South)</label><input id="gAzimuth" type="number" value="${d.azimuthDeg||0}"></div>
           </div>
           <p class="hint">South-facing generally captures the most winter sun in the Northern Hemisphere.</p>
+
+          <h3 style="margin-top:16px;">Openings</h3>
+          <div class="form-inline">
+            <div class="form-row"><label>Window area each (m²)</label><input id="gWinArea" type="number" step="0.1" value="${d.windows[0].areaEach}"></div>
+            <div class="form-row"><label>Window count</label><input id="gWinCount" type="number" value="${d.windows[0].count}"></div>
+            <div class="form-row"><label>Window face</label>
+              <select id="gWinOrient">${["FRONT","BACK","LEFT","RIGHT"].map(v=>`<option ${d.windows[0].orientation===v?"selected":""}>${v}</option>`).join("")}</select>
+            </div>
+          </div>
+          <div class="form-inline">
+            <div class="form-row"><label>Glazing type</label><select id="gGlazing">${glazeOpts}</select></div>
+            <div class="form-row"><label>Door area (m²)</label><input id="gDoorArea" type="number" step="0.1" value="${d.doors[0].areaEach}"></div>
+            <div class="form-row"><label>Door face</label>
+              <select id="gDoorOrient">${["FRONT","BACK","LEFT","RIGHT"].map(v=>`<option ${(d.doors[0].orientation||"FRONT")===v?"selected":""}>${v}</option>`).join("")}</select>
+            </div>
+          </div>
         </div>
         <div class="card" style="text-align:center;">
           <h3>Live Preview</h3>
@@ -4359,25 +4405,59 @@ window.UI = window.UI || {};
       </div>
       ${guidedNav(root, true)}`;
 
-    function refreshPreview() {
-      const patch = {
+    function readPatch() {
+      const shape = U.qs("#gShape", root).value;
+      const isRoundShape = ["CIRCULAR", "DOME", "SEMI_CIRCULAR"].includes(shape);
+      const isLShapeShape = shape === "L_SHAPE";
+      const heightFieldId = isLShapeShape ? "#gHeight3" : isRoundShape ? "#gHeight2" : "#gHeight";
+      return {
+        shape,
         length: parseFloat(U.qs("#gLength", root).value) || d.length,
         width: parseFloat(U.qs("#gWidth", root).value) || d.width,
-        height: parseFloat(U.qs("#gHeight", root).value) || d.height,
-        orientation: U.qs("#gOrientation", root).value, shape: "RECTANGULAR"
+        height: parseFloat(U.qs(heightFieldId, root).value) || d.height,
+        diameter: parseFloat(U.qs("#gDiameter", root) ? U.qs("#gDiameter", root).value : d.diameter) || d.diameter,
+        lengthA: parseFloat(U.qs("#gLengthA", root).value) || d.lengthA || 4,
+        widthA: parseFloat(U.qs("#gWidthA", root).value) || d.widthA || 4,
+        lengthB: parseFloat(U.qs("#gLengthB", root).value) || d.lengthB || 3,
+        widthB: parseFloat(U.qs("#gWidthB", root).value) || d.widthB || 3,
+        orientation: U.qs("#gOrientation", root).value,
+        azimuthDeg: parseFloat(U.qs("#gAzimuth", root).value) || 0,
+        windows: [{
+          areaEach: parseFloat(U.qs("#gWinArea", root).value) || d.windows[0].areaEach,
+          count: parseInt(U.qs("#gWinCount", root).value) || d.windows[0].count,
+          orientation: U.qs("#gWinOrient", root).value, glazingMaterialId: U.qs("#gGlazing", root).value
+        }],
+        doors: [{ areaEach: parseFloat(U.qs("#gDoorArea", root).value) || d.doors[0].areaEach, count: 1, orientation: U.qs("#gDoorOrient", root).value }]
       };
+    }
+    function refreshPreview() {
+      const patch = readPatch();
       const previewDesign = { ...d, ...patch };
-      drawShelterPreview(U.qs("#gPreview", root), previewDesign, ENGINE.computeGeometry(previewDesign));
+      try {
+        drawShelterPreview(U.qs("#gPreview", root), previewDesign, ENGINE.computeGeometry(previewDesign));
+      } catch (e) { /* dimensions mid-edit / not yet valid — leave last-good preview on screen */ }
       return patch;
     }
     refreshPreview();
-    ["#gLength", "#gWidth", "#gHeight", "#gOrientation"].forEach(sel => U.on(sel, "input", refreshPreview, root));
+    U.on("#gShape", "change", () => {
+      const v = U.qs("#gShape", root).value;
+      const isRoundV = ["CIRCULAR","DOME","SEMI_CIRCULAR"].includes(v);
+      const isLShapeV = v === "L_SHAPE";
+      U.qs("#gRectFields", root).style.display = (isRoundV || isLShapeV) ? "none" : "";
+      U.qs("#gRoundFields", root).style.display = isRoundV ? "" : "none";
+      U.qs("#gLshapeFields", root).style.display = isLShapeV ? "" : "none";
+    }, root);
+    U.on("#gOrientation", "change", () => {
+      U.qs("#gAzimuthRow", root).style.display = U.qs("#gOrientation", root).value === "CUSTOM" ? "" : "none";
+    }, root);
+    root.addEventListener("input", refreshPreview);
+    root.addEventListener("change", refreshPreview);
 
     wireGuidedNav(root, () => {
-      const patch = refreshPreview();
+      const patch = readPatch();
       const merged = { ...d, ...patch };
-      const check = ENGINE.validateDesign(merged);
-      if (!check.valid) { alert("Please fix the following before continuing:\n\n- " + check.errors.join("\n- ")); return; }
+      const check = window.APP_VALIDATOR.validateDesign({ ...s, design: merged });
+      if (!check.valid) { alert("Please fix the following before continuing:\n\n- " + check.errors.map(e => e.message).join("\n- ")); return; }
       STORE.updateDesign(patch);
       guidedStep = 3; window.APP.render();
     });
