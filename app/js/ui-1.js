@@ -1098,6 +1098,7 @@ window.UI = window.UI || {};
     const d = s.design;
     const glazeOpts = DATA.materialsByCategory("WINDOW").map(m => `<option value="${m.id}" ${d.windows[0].glazingMaterialId === m.id ? "selected" : ""}>${m.name} (U=${m.uValue}, SHGC=${m.shgc})</option>`).join("");
     root.innerHTML = `
+      <div id="gShelterStep">
       <h1>Guided Setup</h1>
       ${guidedStepBar(2)}
       <div class="grid grid-2">
@@ -1156,7 +1157,8 @@ window.UI = window.UI || {};
           <div id="gPreview"></div>
         </div>
       </div>
-      ${guidedNav(root, true)}`;
+      ${guidedNav(root, true)}
+      </div>`;
 
     function readPatch() {
       const shape = U.qs("#gShape", root).value;
@@ -1203,8 +1205,13 @@ window.UI = window.UI || {};
     U.on("#gOrientation", "change", () => {
       U.qs("#gAzimuthRow", root).style.display = U.qs("#gOrientation", root).value === "CUSTOM" ? "" : "none";
     }, root);
-    root.addEventListener("input", refreshPreview);
-    root.addEventListener("change", refreshPreview);
+    // Bound to this step's own wrapper (not `root`, which is the shared
+    // #viewRoot reused across every step/route) so the listener is torn
+    // down for free when the next step's render() replaces root.innerHTML
+    // — otherwise it keeps firing on later steps' fields and readPatch()
+    // throws on the #gLength etc. it can no longer find.
+    U.qs("#gShelterStep", root).addEventListener("input", refreshPreview);
+    U.qs("#gShelterStep", root).addEventListener("change", refreshPreview);
 
     wireGuidedNav(root, () => {
       const patch = readPatch();
