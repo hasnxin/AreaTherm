@@ -112,6 +112,15 @@
   <script src="js/weather-api.js"></script>
   <script src="js/nasa-power.js"></script>
   <script src="js/elevation.js"></script>
+  <!-- ML surrogate: trained OFFLINE (tools/train-ml-surrogate.js) on this
+       app's own physics engine output, never field data or a live fetch.
+       ml-model-data.js is a plain static data file (trained weights), same
+       loading convention as data.js/config.js — no CDN, no network call.
+       Used only to pre-screen a broad candidate pool before Optimization's
+       "Broader search"; every displayed result is still verified by a real
+       ENGINE.runSimulation() call. See ml-surrogate.js and Settings. -->
+  <script src="js/ml-model-data.js"></script>
+  <script src="js/ml-surrogate.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/export.js"></script>

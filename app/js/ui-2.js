@@ -163,15 +163,21 @@ At hour ${peakSun.hourDecimal.toFixed(1)} (peak solar): T_indoor=${peakSun.tIndo
 Q_exchange ≈ ${peakSun.qMassExchange} W  (positive = mass absorbing heat from air)</pre>`;
   }
   function explainScore(result) {
-    return `<pre>Thermal Comfort Score = 0.45×ComfortHours% + 0.25×HeatRetention% + 0.20×SolarUtilization% + 0.10×EnergyAdequacy
+    const c = result.comfort, sc = result.scores;
+    return `<pre>Thermal Comfort Score = 0.45×ComfortScore + 0.25×HeatRetention% + 0.20×SolarUtilization% + 0.10×EnergyAdequacy
 
-ComfortHours%   = 0.5×Daytime(${result.comfort.dayComfortPct}%) + 0.5×Night(${result.comfort.nightComfortPct}%) = ${result.scores.comfortScore}%
-HeatRetention%  = ${result.scores.heatRetentionPct}%
-SolarUtilization% = ${result.scores.solarUtilizationPct}%
+ComfortScore = 0.6×InBand% + 0.4×Severity%
+  InBand%   = 0.5×Daytime(${c.dayComfortPct}%) + 0.5×Night(${c.nightComfortPct}%) = ${c.inBandPct}%
+  Severity% = 100×(1 − avg°C outside band ÷ band width), avg excess = ${c.avgExcessOutOfBandC}°C
+  ComfortScore = ${sc.comfortScore}%
+HeatRetention%  = ${sc.heatRetentionPct}%
+SolarUtilization% = ${sc.solarUtilizationPct}%
 
-Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
-      <p class="hint">Weights are configurable in Settings / Optimization. This is a custom, project-defined index —
-      not PMV/PPD or any other recognised thermal-comfort standard.</p>`;
+Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
+      <p class="hint">Weights are configurable in Settings / Optimization. ComfortScore blends how often indoor
+      temperature was in the comfort band with how mild the misses were on average when it wasn't — see
+      Settings → Assumptions. This is a custom, project-defined index — not PMV/PPD or any other recognised
+      thermal-comfort standard.</p>`;
   }
 
   function explainBtn(label, fn) {
@@ -422,13 +428,24 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
           ${weightRow("cost", "Cost")}
         </div>
         <div id="weightTotal" class="hint"></div>
+        <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; cursor:pointer;">
+            <input type="checkbox" id="broaderSearchToggle" style="width:auto;" ${window.APP_ML && window.APP_ML.isAvailable() ? "checked" : "disabled"}>
+            Broader search (ML-screened)
+          </label>
+          <p class="hint" style="margin:4px 0 0 24px;">${window.APP_ML && window.APP_ML.isAvailable()
+            ? "Screens ~10,000 combinations with a fast ML surrogate first, then verifies the best 400 with the real physics engine — every shown result is still a real simulation. Untick to use the pure-physics grid only."
+            : "ML surrogate model not loaded — using the pure-physics grid search."}</p>
+        </div>
         <button class="btn btn-accent" id="runOptBtn" style="margin-top:10px;">▶ Run Design Optimization</button>
         <div id="optValidationErrors" hidden></div>
       </div>
 
       ${opt ? `
       <div class="card" style="margin:16px 0;">
-        <h3>Candidate Designs <span class="tag tag-model">${opt.candidatesEvaluated} configurations evaluated</span></h3>
+        <h3>Candidate Designs <span class="tag tag-model">${opt.candidatesEvaluated} configurations evaluated</span>${
+          opt.usedMlScreening ? ` <span class="tag tag-ml">from ${opt.mlScreenedFrom.toLocaleString("en-IN")} ML-screened</span>` : ""
+        }</h3>
         <div class="table-wrap"><table><thead><tr>
           <th>Design</th><th>Wall</th><th>Roof</th><th>Orientation</th><th>Insulation</th><th>Window %</th><th>Glazing</th><th>Thermal Mass</th>
           <th>Comfort</th><th>Retention</th><th>Solar</th><th>Energy</th><th>Cost</th><th>Total Score</th>
@@ -584,14 +601,24 @@ Thermal Comfort Score = ${result.scores.thermalComfortScore} / 100</pre>
       U.showValidationErrors(root, "#optValidationErrors", []);
       const nw = normalizedWeights(w);
       s.weights = nw;
-      try {
-        const result = ENGINE.runOptimization(s.design, season, s.simConfig, nw);
-        STORE.recordOptimization(result);
-        window.APP.render();
-        window.APP.toast(`Optimization complete — ${result.candidatesEvaluated} candidates evaluated.`);
-      } catch (e) {
-        U.showValidationErrors(root, "#optValidationErrors", [{ field: null, message: "Optimization failed: " + e.message }]);
-      }
+      const btn = U.qs("#runOptBtn", root);
+      btn.disabled = true;
+      btn.classList.add("is-loading");
+      const broaderSearch = !!(U.qs("#broaderSearchToggle", root) && U.qs("#broaderSearchToggle", root).checked);
+      setTimeout(() => {
+        try {
+          const result = ENGINE.runOptimization(s.design, season, s.simConfig, nw, { broaderSearch });
+          STORE.recordOptimization(result);
+          window.APP.render();
+          window.APP.toast(result.usedMlScreening
+            ? `Optimization complete — ${result.mlScreenedFrom.toLocaleString("en-IN")} ML-screened, ${result.candidatesEvaluated} verified by real simulation.`
+            : `Optimization complete — ${result.candidatesEvaluated} candidates evaluated.`);
+        } catch (e) {
+          U.showValidationErrors(root, "#optValidationErrors", [{ field: null, message: "Optimization failed: " + e.message }]);
+          btn.disabled = false;
+          btn.classList.remove("is-loading");
+        }
+      }, 30);
     }, root);
   };
 

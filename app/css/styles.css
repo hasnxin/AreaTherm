@@ -21,6 +21,7 @@
   --tag-model-bg:#E1F5F7; --tag-model-fg:#0C7A87;
   --tag-input-bg:#e8f5e9; --tag-input-fg:#1b5e20;
   --tag-field-bg:#f3e5f5; --tag-field-fg:#4a148c;
+  --tag-ml-bg:#e3e8fd; --tag-ml-fg:#2b3a8f;
   --row-highlight:#e8f5e9; --th-bg:#F9FBFB;
   --chart-grid:#eeeeee; --chart-axis:#bdbdbd; --comfort-band:#e8f5e9;
   --recommend-bg:#e8f5e9;
@@ -72,6 +73,7 @@
   --tag-model-bg:#0d2f33; --tag-model-fg:#5AD0DC;
   --tag-input-bg:#0d3311; --tag-input-fg:#a5d6a7;
   --tag-field-bg:#2e0f42; --tag-field-fg:#ce93d8;
+  --tag-ml-bg:#242a5c; --tag-ml-fg:#a8b6f5;
   --row-highlight:#0d3311; --th-bg:#191E23;
   --chart-grid:#252c33; --chart-axis:#4a5760; --comfort-band:#1b3d1e;
   --recommend-bg:#0d2410;
@@ -252,6 +254,7 @@ p, .hint, .modal-body, .assumption-list li{line-height:var(--line-height);}
 .tag-model{background:var(--tag-model-bg); color:var(--tag-model-fg);}
 .tag-input{background:var(--tag-input-bg); color:var(--tag-input-fg);}
 .tag-field{background:var(--tag-field-bg); color:var(--tag-field-fg);}
+.tag-ml{background:var(--tag-ml-bg); color:var(--tag-ml-fg);}
 
 /* Grid / cards */
 .grid{display:grid; gap:16px;}

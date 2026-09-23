@@ -3,8 +3,9 @@ window.APP_CONFIG = {
   APP_NAME: "AreaTherm",
   APP_SUBTITLE: "Area-Specific Passive Shelter Design & Thermal Comfort Prediction Platform",
   TAGLINE: "Design the shelter for the climate — not the climate for the shelter.",
-  MODEL_VERSION: "thermal-engine v1.1.0",
-  OPTIMIZATION_VERSION: "optimizer v1.1.0",
+  MODEL_VERSION: "thermal-engine v1.2.0",
+  OPTIMIZATION_VERSION: "optimizer v1.2.0",
+  ML_SURROGATE_VERSION: "ml-surrogate v1.0.0",
 
   DEFAULT_WEIGHTS: {
     comfort: 0.40,

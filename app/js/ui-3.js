@@ -642,11 +642,23 @@ window.UI = window.UI || {};
             silently shown as live.</li>
             <li>Thermal Comfort Score is a custom, project-defined weighted index — not PMV/PPD or any other
             recognised thermal-comfort standard. Comfort-zone colour bands (18–27°C etc.) are a simplified
-            temperature-only proxy; real comfort also depends on humidity, air speed, and clothing.</li>
+            temperature-only proxy; real comfort also depends on humidity, air speed, and clothing. Its
+            comfort-percentage component blends how often indoor temperature stayed in the comfort band (60%
+            weight) with how mild the average excursion was on the hours it didn't, scaled against the comfort
+            band's own width (40% weight) — so a design that misses badly scores clearly worse than one that
+            misses narrowly, even at the same in-band percentage.</li>
             <li>Material costs are a materials + installation + waste-factor planning estimate — not sourced from a
             CPWD/state PWD Schedule of Rates or a vendor quotation.</li>
             <li>Expected model accuracy has not been formally quantified against field measurements — no
             instrumented-shelter dataset exists yet. Field validation is identified as future work (see Validation).</li>
+            <li>Surface soil composition (Location &amp; Climate page, where available — 5 of the 10 reference
+            locations; the query returned no data for the other 5) is real data from ISRIC SoilGrids' 0–5cm layer,
+            fetched once per location — but it is deliberately <b>not</b> used to adjust the floor/ground heat-loss
+            calculation. Real soil thermal conductivity is dominated by moisture content, which composition data
+            alone doesn't capture (dry vs. saturated soil can differ 3–5×), so texture alone isn't a strong enough
+            signal to justify changing a physics constant. The 0–5cm sample depth is also loose surface topsoil,
+            not necessarily representative of the compacted subgrade under an actual foundation. It's shown for
+            context only.</li>
           </ul>
         </div>
       </div>
@@ -665,6 +677,29 @@ window.UI = window.UI || {};
         <button class="btn btn-sm" id="clearCacheBtn">Clear cached location data</button>
       </div>
 
+      ${window.APP_ML_MODEL ? `
+      <div class="card" style="margin-top:16px;">
+        <h3>ML Surrogate (Optimizer Pre-Screening) <span class="tag tag-ml">ML-based estimation</span></h3>
+        <p class="hint" style="margin-bottom:8px;">A gradient-boosted ensemble of shallow decision trees, trained
+        offline on this app's own physics engine output (never field data, never a live fetch) — used only to
+        pre-screen a broad candidate pool before Optimization's "Broader search". It never produces the displayed
+        Recommended design or its score: every design shown anywhere in this app is always verified by a real
+        physics simulation.</p>
+        <div class="table-wrap"><table>
+          <tr><th>Target</th><th>MAE vs. held-out physics output</th><th>R²</th><th>Test rows</th></tr>
+          ${window.APP_ML_MODEL.targets.map(t => {
+            const a = window.APP_ML_MODEL.accuracy[t];
+            return `<tr><td>${t}</td><td class="num">±${a.mae}</td><td class="num">${a.r2}</td><td class="num">${a.testN}</td></tr>`;
+          }).join("")}
+        </table></div>
+        <p class="hint" style="margin-top:8px;">Measured against this app's own RC engine on ${window.APP_ML_MODEL.testContexts.length}
+        entire climate contexts held out of training completely (not just random rows) — genuine generalization to
+        unseen location/season combinations, not memorization. These numbers describe how closely the surrogate
+        matches this app's own physics model — <b>not</b> a claim about real-world accuracy, which the physics
+        model itself has not been field-validated against either (see Assumptions above). Trained ${new Date(window.APP_ML_MODEL.trainedAt).toLocaleDateString()}
+        on ${window.APP_ML_MODEL.trainRows.toLocaleString("en-IN")} rows · ${CFG.ML_SURROGATE_VERSION}.</p>
+      </div>` : ""}
+
       <div class="card" style="margin-top:16px;">
         <h3>Data Source Transparency</h3>
         <div class="table-wrap"><table>
@@ -672,8 +707,10 @@ window.UI = window.UI || {};
           <tr><td>Hourly ambient temperature, solar irradiance, wind, humidity, cloud cover, precipitation</td><td>Real data — Open-Meteo (live 7-day forecast average; cache/stale-cache fallback honestly labelled)</td></tr>
           <tr><td>Annual solar potential, 20-yr climatology, monthly solar/temperature</td><td>Real data — NASA POWER (2001–2020 climatology)</td></tr>
           <tr><td>Elevation</td><td>Real data — Open-Meteo Elevation API (SRTM-derived)</td></tr>
+          <tr><td>Surface soil composition (sand/clay %, shown on Location &amp; Climate)</td><td>Real data — ISRIC SoilGrids v2.0, fetched once for 5 of the 10 reference locations (the other 5 returned no data on repeated attempts); informational only — not moisture-corrected, not used in the thermal calculation</td></tr>
           <tr><td>Indoor temperature, heat flows, comfort score, solar utilization, heat retention</td><td>Model prediction — this app's RC thermal engine</td></tr>
           <tr><td>Recommended design, candidate scores, sensitivity impacts</td><td>Model prediction — this app's optimizer</td></tr>
+          <tr><td>Which candidates get a full physics simulation during Optimization's "Broader search"</td><td>ML-based estimation — a surrogate trained offline on this app's own physics engine pre-screens a broad candidate pool; only its shortlist is verified by a real simulation. See "ML Surrogate" above for measured accuracy.</td></tr>
           <tr><td>Material thermal / cost / sustainability properties</td><td>Engineering database reference values — editable, not lab-tested, not CPWD/PWD SOR-sourced</td></tr>
           <tr><td>Validation error metrics (MAE/RMSE/MAPE/R²)</td><td>Real math, run against user-provided measurements (placeholder rows until field data exists)</td></tr>
         </table></div>

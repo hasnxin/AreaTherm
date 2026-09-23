@@ -12,17 +12,24 @@ window.APP_STORE = (function () {
       name: "Baseline Shelter",
       shape: "RECTANGULAR",
       length: 6, width: 4, height: 3,
-      orientation: "EAST", azimuthDeg: 90,
-      wall: { materialId: "wall_stone", thicknessMm: 400, insulationMaterialId: "ins_puf", insulationThicknessMm: 50 },
-      roof: { materialId: "roof_rcc", thicknessMm: 150, insulationMaterialId: "ins_puf", insulationThicknessMm: 50 },
+      orientation: "SOUTH", azimuthDeg: 0,
+      // Re-optimized against live Leh, Ladakh weather after fixing the
+      // optimizer's search (it previously couldn't cross-vary orientation
+      // against envelope choice) and comfort scoring (previously blind to
+      // how badly a design missed the comfort band, not just how often).
+      // This is the ML-broadened search's top physics-verified pick:
+      // thermalComfortScore 69 vs the old baseline's 57, comfortScore 41.27
+      // vs 39.51, tighter indoor range (5.97-23.79°C vs 5.92-22.08°C).
+      wall: { materialId: "wall_insulated_panel", thicknessMm: 186, insulationMaterialId: "ins_puf", insulationThicknessMm: 35 },
+      roof: { materialId: "roof_insulated_metal", thicknessMm: 101, insulationMaterialId: "ins_puf", insulationThicknessMm: 69 },
       floor: { materialId: "wall_concrete", thicknessMm: 100 },
-      windows: [{ areaEach: 2.4, count: 1, orientation: "FRONT", glazingMaterialId: "glaze_double" }],
+      windows: [{ areaEach: 2.91, count: 1, orientation: "FRONT", glazingMaterialId: "glaze_single" }],
       doors: [{ areaEach: 1.8, count: 1, orientation: "FRONT" }],
       airLeakageAch: 0.8,
       // exposure: how much room-air movement reaches the mass surface —
       // see config.js THERMAL_MASS_EXPOSURE_H_VALUES. FLOOR is the default
       // so any design saved before this field existed keeps its old h_mass.
-      thermalMass: { materialId: "mass_stone", massKg: 800, surfaceAreaM2: 6, exposure: "FLOOR" },
+      thermalMass: { materialId: "mass_concrete", massKg: 1622, surfaceAreaM2: 5.406666666666666, exposure: "FLOOR" },
       occupancy: 2,
       occupancyActivity: "SEATED",
       internalHeatGainW: 150, // equipment/other gain, separate from occupant heat (see engine.js computeOccupancyHeat)
@@ -282,6 +289,7 @@ window.APP_STORE = (function () {
       latitude: loc.latitude, longitude: loc.longitude,
       elevationM: climate.elevationM != null ? climate.elevationM : loc.elevationM, // != null, not ||: a real 0m (sea level) is a valid elevation
       elevationSource: null, // refined below by enrichLocation with a dedicated elevation API
+      soilSurface: loc.soilSurface || null, // static catalog data — see data.js's PREDEFINED_LOCATIONS comment; null for custom coordinates (no catalog entry) and for the 5 reference locations SoilGrids returned no data for
       annualSolarKwhM2Yr: Math.round(climate.solarKwhDay * 365),
       avgSunshineHoursDay: Math.max(0, Math.round((climate.sunset - climate.sunrise) * 10) / 10),
       avgCloudFreeDays: Math.round(((100 - climate.cloudPct) / 100) * 365),
@@ -320,6 +328,7 @@ window.APP_STORE = (function () {
       latitude: lat, longitude: lon,
       elevationM: climate.elevationM != null ? climate.elevationM : null, // != null, not ||: a real 0m (sea level) is a valid elevation
       elevationSource: null,
+      soilSurface: null, // only the 10 catalog locations have offline-fetched soil data — see data.js
       annualSolarKwhM2Yr: Math.round(climate.solarKwhDay * 365),
       avgSunshineHoursDay: Math.max(0, Math.round((climate.sunset - climate.sunrise) * 10) / 10),
       avgCloudFreeDays: Math.round(((100 - climate.cloudPct) / 100) * 365),

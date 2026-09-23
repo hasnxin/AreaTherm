@@ -357,6 +357,8 @@ window.UI = window.UI || {};
           <div class="metric-card"><div class="metric-label">Elevation</div><div class="metric-value" style="font-size:16px;">${loc && loc.elevationM != null ? loc.elevationM + " m" : "—"}</div>
             ${loc && loc.elevationSource ? `<div class="metric-sub">${U.esc(loc.elevationSource.label)}</div>` : ""}</div>
           <div class="metric-card"><div class="metric-label">Climate Zone</div><div class="metric-value" style="font-size:15px;">${season ? U.esc(U.classifyClimate(loc, season)) : "—"}</div></div>
+          ${loc && loc.soilSurface ? `<div class="metric-card"><div class="metric-label">Surface Soil</div><div class="metric-value" style="font-size:15px;">${loc.soilSurface.sandPct}% sand / ${loc.soilSurface.clayPct}% clay</div>
+            <div class="metric-sub">${U.esc(loc.soilSurface.source)} — informational, not used in the thermal calculation</div></div>` : ""}
         </div>
       </div>
 

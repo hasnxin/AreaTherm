@@ -16,17 +16,31 @@ window.APP_DATA = (function () {
   // illustrative/demo climate data ships with the app. Elevation shown in the
   // app always prefers the live Elevation-API value (elevation.js) over this
   // static figure when the fetch succeeds.
+  //
+  // soilSurface: real surface soil composition (0-5cm depth) from ISRIC
+  // SoilGrids v2.0, fetched once (offline, outside the app — that endpoint's
+  // live latency ranges from ~1s to 90s+ timeouts, unusable for an in-browser
+  // fetch) on 2026-09-22. Informational only — see engine.js's floorUValue
+  // and Settings' assumptions register for why this is NOT used to adjust
+  // the ground heat-loss calculation. null where that query returned no data
+  // (dras/srinagar/pune/bareilly/nagpur — consistently null/timed-out across
+  // two independent attempts, not a one-off network blip).
   const PREDEFINED_LOCATIONS = [
-    { id: "leh", name: "Leh, Ladakh", latitude: 34.15, longitude: 77.58, elevationM: 3500, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "kargil", name: "Kargil, Ladakh", latitude: 34.55, longitude: 76.13, elevationM: 2676, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "keylong", name: "Keylong, Himachal Pradesh", latitude: 32.57, longitude: 77.03, elevationM: 3080, region: "Himachal Pradesh", category: "High Himalaya" },
-    { id: "munsiyari", name: "Munsiyari, Uttarakhand", latitude: 30.07, longitude: 80.24, elevationM: 2298, region: "Uttarakhand", category: "High Himalaya" },
-    { id: "dras", name: "Drass, Ladakh", latitude: 34.43, longitude: 75.75, elevationM: 3280, region: "Ladakh (UT)", category: "Cold desert" },
-    { id: "srinagar", name: "Srinagar, J&K", latitude: 34.08, longitude: 74.80, elevationM: 1590, region: "Jammu & Kashmir (UT)", category: "Temperate valley" },
-    { id: "pune", name: "Pune, Maharashtra", latitude: 18.52, longitude: 73.88, elevationM: 560, region: "Maharashtra", category: "Tropical plateau" },
-    { id: "bareilly", name: "Bareilly, Uttar Pradesh", latitude: 28.37, longitude: 79.43, elevationM: 168, region: "Uttar Pradesh", category: "Gangetic plain" },
-    { id: "nagpur", name: "Nagpur, Maharashtra", latitude: 21.15, longitude: 79.09, elevationM: 310, region: "Maharashtra", category: "Tropical plain" },
-    { id: "shimla", name: "Shimla, Himachal Pradesh", latitude: 31.10, longitude: 77.17, elevationM: 2200, region: "Himachal Pradesh", category: "Mid Himalaya" }
+    { id: "leh", name: "Leh, Ladakh", latitude: 34.15, longitude: 77.58, elevationM: 3500, region: "Ladakh (UT)", category: "Cold desert",
+      soilSurface: { sandPct: 50.2, clayPct: 17.4, socGkg: 13.8, bulkDensityKgM3: 1300, source: "SoilGrids v2.0 (ISRIC)" } },
+    { id: "kargil", name: "Kargil, Ladakh", latitude: 34.55, longitude: 76.13, elevationM: 2676, region: "Ladakh (UT)", category: "Cold desert",
+      soilSurface: { sandPct: 37.7, clayPct: 25.2, socGkg: 28.8, bulkDensityKgM3: 1260, source: "SoilGrids v2.0 (ISRIC)" } },
+    { id: "keylong", name: "Keylong, Himachal Pradesh", latitude: 32.57, longitude: 77.03, elevationM: 3080, region: "Himachal Pradesh", category: "High Himalaya",
+      soilSurface: { sandPct: 42.5, clayPct: 18.8, socGkg: 97.6, bulkDensityKgM3: 1090, source: "SoilGrids v2.0 (ISRIC)" } },
+    { id: "munsiyari", name: "Munsiyari, Uttarakhand", latitude: 30.07, longitude: 80.24, elevationM: 2298, region: "Uttarakhand", category: "High Himalaya",
+      soilSurface: { sandPct: 39.7, clayPct: 21.8, socGkg: 61.6, bulkDensityKgM3: 1150, source: "SoilGrids v2.0 (ISRIC)" } },
+    { id: "dras", name: "Drass, Ladakh", latitude: 34.43, longitude: 75.75, elevationM: 3280, region: "Ladakh (UT)", category: "Cold desert", soilSurface: null },
+    { id: "srinagar", name: "Srinagar, J&K", latitude: 34.08, longitude: 74.80, elevationM: 1590, region: "Jammu & Kashmir (UT)", category: "Temperate valley", soilSurface: null },
+    { id: "pune", name: "Pune, Maharashtra", latitude: 18.52, longitude: 73.88, elevationM: 560, region: "Maharashtra", category: "Tropical plateau", soilSurface: null },
+    { id: "bareilly", name: "Bareilly, Uttar Pradesh", latitude: 28.37, longitude: 79.43, elevationM: 168, region: "Uttar Pradesh", category: "Gangetic plain", soilSurface: null },
+    { id: "nagpur", name: "Nagpur, Maharashtra", latitude: 21.15, longitude: 79.09, elevationM: 310, region: "Maharashtra", category: "Tropical plain", soilSurface: null },
+    { id: "shimla", name: "Shimla, Himachal Pradesh", latitude: 31.10, longitude: 77.17, elevationM: 2200, region: "Himachal Pradesh", category: "Mid Himalaya",
+      soilSurface: { sandPct: 36.4, clayPct: 25.4, socGkg: 52.9, bulkDensityKgM3: 1190, source: "SoilGrids v2.0 (ISRIC)" } }
   ];
 
   // ---- Material library ---------------------------------------------

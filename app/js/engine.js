@@ -10,6 +10,11 @@ window.APP_ENGINE = (function () {
   const AIR_CP = CFG.PHYSICS.AIR_CP_J_KGK;
   const H_O = CFG.PHYSICS.OUTSIDE_FILM_COEFF_W_M2K;
   const H_MASS = CFG.PHYSICS.MASS_FILM_COEFF_W_M2K;
+  // R_GROUND: below-slab ground-coupling resistance (m²K/W), a flat generic
+  // building-physics default — same for every location, not location-specific
+  // soil data. (Real per-location soil composition is fetched and shown on
+  // the Location & Climate page for context, but deliberately not used here —
+  // see Settings' assumptions register for why.) See ARCHITECTURE.md SS8.
   const RSI_WALL = 0.13, RSI_ROOF = 0.10, R_GROUND = 0.50;
 
   // Orientation offset-from-south (deg), used for the piecewise factor table.
@@ -541,7 +546,26 @@ window.APP_ENGINE = (function () {
     // (solar + internal + net mass release) — 100% means gains fully offset losses.
     const heatRetentionPct = clamp(pct(agg.solarKwh + agg.internalKwh + Math.max(0, -agg.massExchangeKwh), totalLossKwh), 0, 100);
 
-    const comfortScore = clamp(0.5 * dayComfortPct + 0.5 * nightComfortPct, 0, 100);
+    // Comfort score blends two things: how OFTEN indoor temp was in-band
+    // (inBandPct, as before) and how MILD the misses were on average when it
+    // wasn't (severityComponent). A pure in-band% can't tell a 1°C miss from
+    // a 30°C one — both just count as "out of band" for that hour — which let
+    // a severely-overheating candidate (59.76°C indoor) score in the same
+    // neighborhood as a mildly-uncomfortable one. Severity is normalized
+    // against the design's own comfort-band width (missing by as much as the
+    // whole acceptable range, on average, is treated as maximally severe) —
+    // no unexplained constant. Blended rather than subtracted so two designs
+    // that are both 0% in-band still separate by how badly they missed,
+    // instead of both collapsing to the same score.
+    const inBandPct = clamp(0.5 * dayComfortPct + 0.5 * nightComfortPct, 0, 100);
+    const outOfBandStepsArr = series.filter(s => !s.inComfort);
+    const outOfBandDegSum = outOfBandStepsArr.reduce((sum, s) =>
+      sum + Math.max(0, design.comfort.min - s.tIndoor) + Math.max(0, s.tIndoor - design.comfort.max), 0);
+    const avgExcessOutOfBandC = outOfBandStepsArr.length ? outOfBandDegSum / outOfBandStepsArr.length : 0;
+    const comfortBandWidthC = design.comfort.max - design.comfort.min;
+    const severityRatio = comfortBandWidthC > 0 ? clamp(avgExcessOutOfBandC / comfortBandWidthC, 0, 1) : 0;
+    const severityComponent = 100 * (1 - severityRatio);
+    const comfortScore = clamp(0.6 * inBandPct + 0.4 * severityComponent, 0, 100);
     const energyDemandPerDay = (agg.heatingReqKwh + agg.coolingReqKwh) / totalDays;
     const energyAdequacyPct = clamp(100 - energyDemandPerDay * 1.5, 0, 100);
     // NOTE: this is a custom, project-defined index (weighted blend of modelled
@@ -591,7 +615,7 @@ window.APP_ENGINE = (function () {
       comfort: {
         comfortHoursPerDay: round2(comfortHoursPerDay), dayComfortPct: round2(dayComfortPct),
         nightComfortPct: round2(nightComfortPct), minIndoor: round2(minIndoor), maxIndoor: round2(maxIndoor),
-        avgIndoor: avgIndoor
+        avgIndoor: avgIndoor, avgExcessOutOfBandC: round2(avgExcessOutOfBandC), inBandPct: round2(inBandPct)
       },
       scores: {
         comfortScore: round2(comfortScore), heatRetentionPct: round2(heatRetentionPct),
@@ -665,66 +689,189 @@ window.APP_ENGINE = (function () {
     roofSystem("roof_composite", 50), roofSystem("roof_earth", 50)
   ];
   // null = no thermal mass; otherwise a material + a representative amount.
+  // mass_concrete exists in the materials database (DATA.MATERIALS) but was
+  // missing here — every other WALL/ROOF/THERMAL_MASS material in the
+  // database has a search option; this was the one gap.
   const MASS_OPTIONS = [
     null,
     { materialId: "mass_stone", massKg: 900 }, { materialId: "mass_water", massKg: 900 },
     { materialId: "mass_pcm", massKg: 400 }, { materialId: "mass_composite", massKg: 900 },
-    { materialId: "mass_earth", massKg: 1600 }
+    { materialId: "mass_earth", massKg: 1600 }, { materialId: "mass_concrete", massKg: 900 }
   ];
+  const SECONDARY_ORIENTATIONS = ["SOUTH", "SE", "SW", "EAST"];
+  const SECONDARY_WINDOW_PCT = [0.08, 0.12, 0.16, 0.20];
+  const SECONDARY_GLAZINGS = ["glaze_single", "glaze_double", "glaze_triple", "glaze_lowe"];
+  // How many top wall+roof envelopes (by Stage 1 score) get the full
+  // secondary grid in Stage 2. 1 is sufficient because Stage 3 re-opens the
+  // full wall x roof envelope grid against the true winning secondary combo
+  // regardless (see generateCandidates) — raise to 2 for extra margin at
+  // +~380 candidates and a runtime that starts to matter on the 7-day option.
+  const ENVELOPE_FINALISTS = 1;
 
-  function generateCandidates(baseDesign) {
-    const orientations = ["SOUTH", "SE", "SW", "EAST"];
-    const windowPct = [0.08, 0.12, 0.16, 0.20];
-    const glazings = ["glaze_single", "glaze_double", "glaze_triple", "glaze_lowe"];
-
-    // Wall x roof material is the primary axis (10 x 6 = 60, one candidate
-    // per material combination, guaranteeing every wall/roof pairing is
-    // actually evaluated). Orientation/window%/glazing/thermal-mass cycle
-    // across that same 60-candidate sequence via coprime-ish offsets so the
-    // secondary parameters still vary — not locked to a single value — but
-    // don't need a full nested cross-product to do it.
-    const candidates = [];
-    let idx = 0;
-    for (const wallSys of WALL_SYSTEMS) {
-      for (const roofSys of ROOF_SYSTEMS) {
-        const orient = orientations[idx % orientations.length];
-        const wpct = windowPct[(idx + 1) % windowPct.length];
-        const glz = glazings[(idx + 2) % glazings.length];
-        const massOpt = MASS_OPTIONS[idx % MASS_OPTIONS.length];
-        idx++;
-
-        const d = cloneDesign(baseDesign);
-        d.orientation = orient === "SOUTH" || orient === "EAST" ? orient : "CUSTOM";
-        if (orient === "SE") { d.orientation = "CUSTOM"; d.azimuthDeg = 45; }
-        if (orient === "SW") { d.orientation = "CUSTOM"; d.azimuthDeg = 315; }
-        if (orient === "SOUTH") d.azimuthDeg = 0;
-        if (orient === "EAST") d.azimuthDeg = 90;
-        d.wall.materialId = wallSys.materialId;
-        d.wall.thicknessMm = wallSys.thicknessMm;
-        d.wall.insulationMaterialId = d.wall.insulationMaterialId || "ins_puf";
-        d.wall.insulationThicknessMm = wallSys.insulationThicknessMm;
-        d.roof.materialId = roofSys.materialId;
-        d.roof.thicknessMm = roofSys.thicknessMm;
-        d.roof.insulationMaterialId = d.roof.insulationMaterialId || "ins_puf";
-        d.roof.insulationThicknessMm = roofSys.insulationThicknessMm;
-        const geom0 = computeGeometry(d);
-        const targetWindowArea = geom0.wallArea * wpct;
-        d.windows = [{ areaEach: round2(targetWindowArea), count: 1, orientation: "FRONT", glazingMaterialId: glz }];
-        if (massOpt) {
-          d.thermalMass = { materialId: massOpt.materialId, massKg: massOpt.massKg, surfaceAreaM2: Math.min(geom0.floorArea, massOpt.massKg / 300) };
-        } else {
-          d.thermalMass = null;
-        }
-        candidates.push({
-          design: d,
-          params: {
-            orient, insul: wallSys.insulationThicknessMm, wpct, glz, mass: massOpt ? massOpt.massKg : 0,
-            wall: wallSys.materialId, roof: roofSys.materialId, massMat: massOpt ? massOpt.materialId : null
-          }
-        });
+  // Single source of truth for "how do 6 axis values become a design" —
+  // shared by every search stage below.
+  function buildCandidate(baseDesign, wallSys, roofSys, orient, wpct, glz, massOpt) {
+    const d = cloneDesign(baseDesign);
+    d.orientation = orient === "SOUTH" || orient === "EAST" ? orient : "CUSTOM";
+    if (orient === "SE") { d.orientation = "CUSTOM"; d.azimuthDeg = 45; }
+    if (orient === "SW") { d.orientation = "CUSTOM"; d.azimuthDeg = 315; }
+    if (orient === "SOUTH") d.azimuthDeg = 0;
+    if (orient === "EAST") d.azimuthDeg = 90;
+    d.wall.materialId = wallSys.materialId;
+    d.wall.thicknessMm = wallSys.thicknessMm;
+    d.wall.insulationMaterialId = d.wall.insulationMaterialId || "ins_puf";
+    d.wall.insulationThicknessMm = wallSys.insulationThicknessMm;
+    d.roof.materialId = roofSys.materialId;
+    d.roof.thicknessMm = roofSys.thicknessMm;
+    d.roof.insulationMaterialId = d.roof.insulationMaterialId || "ins_puf";
+    d.roof.insulationThicknessMm = roofSys.insulationThicknessMm;
+    const geom0 = computeGeometry(d);
+    const targetWindowArea = geom0.wallArea * wpct;
+    d.windows = [{ areaEach: round2(targetWindowArea), count: 1, orientation: "FRONT", glazingMaterialId: glz }];
+    d.thermalMass = massOpt
+      ? { materialId: massOpt.materialId, massKg: massOpt.massKg, surfaceAreaM2: Math.min(geom0.floorArea, massOpt.massKg / 300) }
+      : null;
+    return {
+      design: d,
+      params: {
+        orient, insul: wallSys.insulationThicknessMm, wpct, glz, mass: massOpt ? massOpt.massKg : 0,
+        wall: wallSys.materialId, roof: roofSys.materialId, massMat: massOpt ? massOpt.materialId : null
       }
+    };
+  }
+
+  function massOptionByMaterialId(materialId) {
+    return MASS_OPTIONS.find(m => m && m.materialId === materialId) || null;
+  }
+
+  // Snap baseDesign's own current orientation/window%/glazing/mass onto the
+  // option sets below, so Stage 1 searches wall x roof against what the
+  // shelter actually has right now, not an arbitrary index-derived tuple.
+  function currentOrientationKey(baseDesign) {
+    const az = frontAzimuthOf(baseDesign);
+    const options = [["SOUTH", 0], ["SE", 45], ["EAST", 90], ["SW", 315]];
+    return options.reduce((best, opt) => {
+      const diff = Math.min(Math.abs(az - opt[1]), 360 - Math.abs(az - opt[1]));
+      const bestDiff = Math.min(Math.abs(az - best[1]), 360 - Math.abs(az - best[1]));
+      return diff < bestDiff ? opt : best;
+    }, options[0])[0];
+  }
+  function currentWindowPctOf(baseDesign) {
+    const geom = computeGeometry(baseDesign);
+    const windowArea = (baseDesign.windows || []).reduce((s, w) => s + (w.areaEach || 0) * (w.count || 0), 0);
+    const raw = geom.wallArea > 0 ? windowArea / geom.wallArea : 0.12;
+    return SECONDARY_WINDOW_PCT.reduce((a, b) => Math.abs(b - raw) < Math.abs(a - raw) ? b : a);
+  }
+  function currentGlazingOf(baseDesign) {
+    const glz = baseDesign.windows && baseDesign.windows[0] && baseDesign.windows[0].glazingMaterialId;
+    return SECONDARY_GLAZINGS.includes(glz) ? glz : "glaze_double";
+  }
+  function currentMassOptionOf(baseDesign) {
+    if (!baseDesign.thermalMass || !baseDesign.thermalMass.massKg) return null;
+    return massOptionByMaterialId(baseDesign.thermalMass.materialId) || MASS_OPTIONS[1];
+  }
+
+  // Stage 1: envelope axis, wall x roof (10 x 6 = 60).
+  function buildEnvelopeCandidates(baseDesign) {
+    const orient = currentOrientationKey(baseDesign);
+    const wpct = currentWindowPctOf(baseDesign);
+    const glz = currentGlazingOf(baseDesign);
+    const massOpt = currentMassOptionOf(baseDesign);
+    const out = [];
+    WALL_SYSTEMS.forEach(wallSys => ROOF_SYSTEMS.forEach(roofSys => {
+      out.push({ wallSys, roofSys, candidate: buildCandidate(baseDesign, wallSys, roofSys, orient, wpct, glz, massOpt) });
+    }));
+    return out;
+  }
+
+  // Stage 2/3: secondary axis, orientation x window% x glazing x mass
+  // (4 x 4 x 4 x 7 = 448), at one fixed envelope.
+  function buildSecondaryCandidates(baseDesign, wallSys, roofSys) {
+    const out = [];
+    SECONDARY_ORIENTATIONS.forEach(orient => SECONDARY_WINDOW_PCT.forEach(wpct =>
+      SECONDARY_GLAZINGS.forEach(glz => MASS_OPTIONS.forEach(massOpt => {
+        out.push(buildCandidate(baseDesign, wallSys, roofSys, orient, wpct, glz, massOpt));
+      }))));
+    return out;
+  }
+
+  // Staged block-coordinate-ascent search, replacing a single flat 60-
+  // candidate grid that coupled orientation/window%/glazing/mass to the
+  // wall x roof loop index (so a given envelope was only ever tested with
+  // one arbitrary secondary combo — never "this envelope, but a better
+  // orientation"). Each stage is exhaustive within what it varies, so the
+  // result is provably non-decreasing versus the old flat grid — nothing
+  // evaluated is ever discarded, only what to explore next is staged:
+  //   Stage 1 — wall x roof (60), secondary pinned to baseDesign's own
+  //             current settings.
+  //   Stage 2 — full secondary cross-product (448) for the Stage 1 winner.
+  //   Stage 3 — re-open the envelope axis (remaining 59 pairs) against the
+  //             best secondary combo found in Stage 1+2, so a Stage-1
+  //             finalist chosen under baseDesign's secondary settings isn't
+  //             the final word if a different envelope wins once paired
+  //             with the true best secondary combo.
+  // 567 total candidates (60 + 448 + 59), benchmarked ~80-100ms (24H-7day
+  // config, warm V8) — comfortably fast even before the ML-screened
+  // "Broader search" option below.
+  function generateCandidates(baseDesign, season, simConfig, weights) {
+    function evaluate(c) {
+      const result = runSimulation(c.design, season, simConfig);
+      // No optimization-candidate UI ever reads a per-candidate hourly
+      // series (only the single baseline runSimulation() result is ever
+      // charted) — dropping it keeps STORE.save()'s localStorage blob well
+      // under quota at this candidate count (full series on all 567
+      // candidates would run tens of MB on the 7-day option).
+      delete result.series;
+      const cost = estimateCost(c.design);
+      return { ...c, result, cost };
     }
-    return candidates;
+    function rangesOf(list) {
+      const costs = list.map(e => e.cost);
+      const demands = list.map(e => e.result.daily.heatingReqKwh + e.result.daily.coolingReqKwh);
+      return {
+        cost: { min: Math.min(...costs), max: Math.max(...costs) },
+        energy: { min: Math.min(...demands), max: Math.max(...demands) }
+      };
+    }
+    function totalScore(e, r) { return scoreCandidate(e.result, e.cost, weights, r.cost, r.energy).total; }
+
+    // ---- Stage 1: wall x roof @ baseDesign's current secondary params ----
+    const stage1Pairs = buildEnvelopeCandidates(baseDesign);
+    const stage1Zipped = stage1Pairs.map(p => ({ wallSys: p.wallSys, roofSys: p.roofSys, e: evaluate(p.candidate) }));
+    const stage1 = stage1Zipped.map(z => z.e);
+
+    const r1 = rangesOf(stage1);
+    const finalists = stage1Zipped
+      .map(z => ({ ...z, total: totalScore(z.e, r1) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, ENVELOPE_FINALISTS);
+
+    // ---- Stage 2: full secondary grid per finalist envelope ----
+    const stage2 = [];
+    finalists.forEach(f => {
+      buildSecondaryCandidates(baseDesign, f.wallSys, f.roofSys).forEach(c => stage2.push(evaluate(c)));
+    });
+
+    // ---- Stage 3: re-open the envelope axis at the best secondary combo
+    // found so far (Stage 1+2 pooled) — skips the finalist pair(s) Stage 2
+    // already covered.
+    const pooled12 = [...stage1, ...stage2];
+    const r12 = rangesOf(pooled12);
+    const winner = pooled12.reduce((best, e) => {
+      const t = totalScore(e, r12);
+      return (!best || t > best.total) ? { e, total: t } : best;
+    }, null).e;
+    const winnerMassOpt = massOptionByMaterialId(winner.params.massMat);
+
+    const stage3 = [];
+    WALL_SYSTEMS.forEach(wallSys => ROOF_SYSTEMS.forEach(roofSys => {
+      if (finalists.some(f => f.wallSys === wallSys && f.roofSys === roofSys)) return;
+      stage3.push(evaluate(buildCandidate(
+        baseDesign, wallSys, roofSys, winner.params.orient, winner.params.wpct, winner.params.glz, winnerMassOpt
+      )));
+    }));
+
+    return [...stage1, ...stage2, ...stage3];
   }
 
   function scoreCandidate(result, cost, weights, costRange, energyRange) {
@@ -744,13 +891,78 @@ window.APP_ENGINE = (function () {
     return { comfort, retention, solar, energyScore, costScore, energyDemand, total: round2(total) };
   }
 
-  function runOptimization(baseDesign, season, simConfig, weights) {
-    const rawCandidates = generateCandidates(baseDesign);
-    const evaluated = rawCandidates.map(c => {
-      const result = runSimulation(c.design, season, simConfig);
-      const cost = estimateCost(c.design);
-      return { ...c, result, cost };
+  // Broad, continuous-parameter candidate sampling for ML-surrogate
+  // pre-screening (see surrogateScreen below). Unlike the grid stages above
+  // (fixed WALL_SYSTEMS/ROOF_SYSTEMS thickness combos, 4 named orientations),
+  // wall/roof thickness and insulation, window%, and mass amount are sampled
+  // continuously — the same ranges the offline trainer draws from (see
+  // tools/generate-training-data.js) — so this genuinely explores between
+  // today's fixed grid points, not just a re-shuffling of them.
+  function randomBroadCandidate(baseDesign) {
+    const wallMat = pick(DATA.materialsByCategory("WALL"));
+    const roofMat = pick(DATA.materialsByCategory("ROOF"));
+    const wallSys = { materialId: wallMat.id, thicknessMm: Math.round(uniformBetween(50, 400)), insulationThicknessMm: Math.round(uniformBetween(0, 150)) };
+    const roofSys = { materialId: roofMat.id, thicknessMm: Math.round(uniformBetween(50, 250)), insulationThicknessMm: Math.round(uniformBetween(0, 150)) };
+    const orient = pick(SECONDARY_ORIENTATIONS);
+    const wpct = uniformBetween(0.04, 0.35);
+    const glz = pick(SECONDARY_GLAZINGS);
+    const massOpt = Math.random() < 0.15 ? null : (() => {
+      const m = pick(MASS_OPTIONS.filter(Boolean));
+      return { materialId: m.materialId, massKg: Math.round(uniformBetween(200, 2000)) };
+    })();
+    return buildCandidate(baseDesign, wallSys, roofSys, orient, wpct, glz, massOpt);
+  }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function uniformBetween(min, max) { return min + Math.random() * (max - min); }
+
+  // ML-surrogate pre-screening: score N broadly-sampled candidates with the
+  // fast trained surrogate (window.APP_ML, see ml-surrogate.js — trained
+  // offline on this app's own physics engine output, never field data),
+  // keep only the top K by surrogate score, and hand those K back to the
+  // caller for REAL physics verification. The surrogate's own predictions
+  // and the N-broad pool are discarded here and never returned — physics
+  // stays authoritative by construction: every candidate that reaches
+  // runOptimization's output has a real runSimulation() result backing it,
+  // exactly like the grid-search path.
+  function surrogateScreen(baseDesign, season, weights, N, K) {
+    const ML = window.APP_ML;
+    const broad = [];
+    for (let i = 0; i < N; i++) broad.push(randomBroadCandidate(baseDesign));
+    const scored = broad.map(c => ({ c, cost: estimateCost(c.design), pred: ML.predict(c.design, season) }));
+    const costs = scored.map(s => s.cost);
+    const costRange = { min: Math.min(...costs), max: Math.max(...costs) };
+    const demands = scored.map(s => s.pred.energyDemandKwhPerDay);
+    const energyRange = { min: Math.min(...demands), max: Math.max(...demands) };
+    scored.forEach(s => {
+      // Reuses scoreCandidate's exact weighting/normalization formula via a
+      // minimal result-shaped wrapper around the surrogate's predictions —
+      // zero duplicated math between the real and surrogate-screening paths.
+      const fakeResult = {
+        scores: { comfortScore: s.pred.comfortScore, heatRetentionPct: s.pred.heatRetentionPct, solarUtilizationPct: s.pred.solarUtilizationPct },
+        daily: { heatingReqKwh: Math.max(0, s.pred.energyDemandKwhPerDay), coolingReqKwh: 0 }
+      };
+      s.surrogateTotal = scoreCandidate(fakeResult, s.cost, weights, costRange, energyRange).total;
     });
+    scored.sort((a, b) => b.surrogateTotal - a.surrogateTotal);
+    return scored.slice(0, K).map(s => s.c);
+  }
+
+  function runOptimization(baseDesign, season, simConfig, weights, opts) {
+    opts = opts || {};
+    let evaluated;
+    const usedMlScreening = !!(opts.broaderSearch && window.APP_ML && window.APP_ML.isAvailable());
+    const broadN = opts.n || 10000;
+    if (usedMlScreening) {
+      const K = opts.k || 400;
+      const shortlist = surrogateScreen(baseDesign, season, weights, broadN, K);
+      evaluated = shortlist.map(c => {
+        const result = runSimulation(c.design, season, simConfig);
+        delete result.series; // see generateCandidates' evaluate() — same localStorage-quota reasoning
+        return { ...c, result, cost: estimateCost(c.design) };
+      });
+    } else {
+      evaluated = generateCandidates(baseDesign, season, simConfig, weights);
+    }
     const costs = evaluated.map(e => e.cost);
     const costRange = { min: Math.min(...costs), max: Math.max(...costs) };
     const demands = evaluated.map(e => e.result.daily.heatingReqKwh + e.result.daily.coolingReqKwh);
@@ -761,7 +973,10 @@ window.APP_ENGINE = (function () {
     const top = evaluated.slice(0, 5);
     const labels = ["A", "B", "C", "D", "E"];
     top.forEach((e, i) => { e.label = labels[i]; e.isRecommended = i === 0; });
-    return { candidatesEvaluated: evaluated.length, top, recommended: top[0], all: evaluated };
+    return {
+      candidatesEvaluated: evaluated.length, top, recommended: top[0], all: evaluated,
+      usedMlScreening, mlScreenedFrom: usedMlScreening ? broadN : null
+    };
   }
 
   function sensitivityAnalysis(baseDesign, season, simConfig, weights) {

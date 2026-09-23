@@ -187,9 +187,14 @@ Calculation")
   comfort_max`.
 - Solar utilization % = (solar energy that reduced/avoided a loss) ÷
   (total incident solar energy on the envelope).
-- Thermal Comfort Score (0–100) = weighted blend of daytime comfort %,
-  night comfort %, solar utilization %, heat-retention % — weights
-  configurable, shown in full in Explain Calculation.
+- Thermal Comfort Score (0–100) = weighted blend of a comfort-percentage
+  term, solar utilization %, heat-retention %, and energy adequacy —
+  weights configurable, shown in full in Explain Calculation. The
+  comfort-percentage term itself blends how often indoor temperature was
+  in the comfort band with how mild the average miss was on the hours it
+  wasn't (normalized against the comfort band's own width), so a design
+  that misses badly scores clearly worse than one that misses narrowly at
+  the same in-band %.
 
 All formulas above are re-printed, with the run's actual numbers substituted
 step by step, in every "Explain Calculation" panel — nothing is a black box.
@@ -374,7 +379,13 @@ Steady vs transient: transient (explicit hourly RC model), not steady-state.
 Outside film coefficient fixed at 23 W/m²K, wind-adjusted by a simple linear
 factor. Sky longwave radiation exchange is not separately modelled (folded
 into the sol-air simplification). Ground temperature defaults to monthly
-mean ambient unless overridden. Internal gains are constant-per-hour unless
+mean ambient unless overridden. Below-slab ground-coupling resistance
+(R_GROUND, engine.js) is a flat generic building-physics default (0.50
+m²K/W) applied everywhere — not location-specific soil data, even though
+real per-location soil composition is now fetched and shown for context on
+the Location & Climate page (texture alone, without moisture content, isn't
+a strong enough signal to justify a location-specific value here). Internal
+gains are constant-per-hour unless
 an occupancy schedule is supplied. Occupant heat uses fixed watt figures per
 activity level (ASHRAE Fundamentals Ch. 9 / ISO 8996 order of magnitude)
 split into sensible/latent by simplified fixed fractions, and ventilation
