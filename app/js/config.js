@@ -82,15 +82,5 @@ window.APP_CONFIG = {
     RETRY_BASE_DELAY_MS: 500,
     CIRCUIT_BREAKER_FAILURE_THRESHOLD: 3,
     CIRCUIT_BREAKER_COOLDOWN_MS: 60000
-  },
-
-  // The AreaTherm Spring Boot backend (see /backend) — REST API + JWT auth.
-  // The app requires this backend to be running; see app/js/backend-api.js.
-  BACKEND: {
-    BASE_URL: "http://localhost:8080/api/v1",
-    // How often to poll a queued simulation/optimization-run job, and how
-    // long to keep polling before giving up and surfacing a timeout error.
-    POLL_INTERVAL_MS: 1500,
-    POLL_TIMEOUT_MS: 120000
   }
 };

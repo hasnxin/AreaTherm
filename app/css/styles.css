@@ -522,15 +522,3 @@ td.num{font-family:var(--mono); text-align:right; font-variant-numeric:tabular-n
 :root[data-theme="dark"] .heatflow-bar-track{background:#1b2a3c;}
 :root[data-theme="dark"] .chart-comfort-band{opacity:.45;}
 @media print{ :root[data-theme="dark"] body{background:#fff; color:#000;} }
-
-/* Login/Register — the app requires the backend, so these gate everything
-   else (see app.js's render() guard). Sidebar/topbar chrome is hidden and
-   #viewRoot's single .card is centered full-viewport instead. */
-body.unauthenticated .sidebar,
-body.unauthenticated .sidebar-backdrop,
-body.unauthenticated .topbar{display:none;}
-body.unauthenticated .content{margin-left:0;}
-body.unauthenticated .view{
-  min-height:100vh; max-width:none; padding:20px;
-  display:flex; align-items:center; justify-content:center;
-}

@@ -15,33 +15,17 @@ early risks becoming an *unverifiable* mockup — exactly what the brief
 prohibits ("Do NOT build only a calculator" / "not a superficial UI
 mockup").
 
-**Decision**: Phase 1 of this prototype was a self-contained, dependency-free
+**Decision**: Phase 1 of this prototype is a self-contained, dependency-free
 web application (plain HTML/CSS/JS, no build step, no external services)
 that implements the *entire* workflow — including the real physics engine
-and the real multi-parameter optimizer — client-side. This is not a
-wireframe: every number shown is computed by the same equations documented
-in §4 below.
+and the real multi-parameter optimizer — client-side. It runs by opening
+`app/index.html` in any browser. This is not a wireframe: every number shown
+is computed by the same equations documented in §4 below.
 
 Section 1 below is the target production architecture. The prototype's code
 is deliberately organized (see §6, file layout) so each JS module maps onto
 a specific Spring Boot service / Angular feature module, making the port
 mechanical rather than a redesign.
-
-**Update**: the Spring Boot backend described in §1 now exists at
-[`backend/`](backend/) (Java 17, Spring Boot 3) — see
-[`backend/README.md`](backend/README.md) for build/run instructions.
-`thermal/`/`optimization/` there are a numerically-verified, zero-framework
-port of this document's §3-4 and `app/js/engine.js`, checked against real
-captured output from this exact prototype (golden-file tests, not just unit
-tests). The frontend above is now wired to it and **requires it to be
-running** — auth, persistence, and every official simulation/optimization
-run go through the real backend API; only instant/interactive feedback that
-was never an official result (live preview while editing, What-If,
-Sensitivity Analysis, Explain Calculation) still computes client-side, for
-the reasons given in the root `README.md`'s "Known limitations" section. No
-LLM is wired up anywhere yet (see §9 and `backend/`'s `ml/` package), and
-the Angular rewrite mentioned in §1 hasn't happened — this vanilla-JS
-frontend talks to the production backend directly in the meantime.
 
 ---
 
@@ -98,12 +82,10 @@ infra is available.
 
 Entities exactly as specified in the brief, §20:
 
-`user`, `location`, `climate_profile`, `climate_profile_hourly` /
-`climate_profile_monthly` (time series / monthly-normal child tables),
-`shelter_design` (role-specific material FK columns for wall/roof/floor and
-independent wall/roof insulation — a flat-column shape, not a
-`material_layer` join table, since the layer-role set is small and fixed),
-`material`, `opening`, `thermal_mass`, `comfort_profile`, `simulation`,
+`user`, `location`, `climate_profile`, `climate_profile_hourly` (time series
+child table), `shelter_design`, `material`, `material_layer` (join: which
+material + thickness is used in which design layer — wall/roof/floor),
+`opening`, `thermal_mass`, `comfort_profile`, `simulation`,
 `simulation_result` (time series child table), `optimization_run`,
 `design_candidate`, `validation_dataset`, `validation_dataset_point`,
 `report`.
@@ -185,12 +167,7 @@ C_mass × dT_mass/dt = Q_exchange(t) + f_solar_to_mass × Q_solar,window(t)
 across their phase-change band — a documented simplification of latent
 heat, not a full enthalpy method).
 
-### 3.7 Indoor air energy balance (implicit/backward-Euler, Δt = time step)
-
-Solved as a UA-weighted average pulling T_air toward its driving
-temperatures each step — unconditionally stable, unlike explicit Euler,
-which diverges here because the indoor-air capacitance is small relative to
-hourly heat-flow magnitudes (see `engine.js`'s `runSimulation` loop).
+### 3.7 Indoor air energy balance (explicit Euler, Δt = time step)
 
 ```
 C_air × ΔT_air/Δt =

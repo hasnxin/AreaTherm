@@ -1,18 +1,4 @@
 /* AreaTherm — small shared UI helpers. */
-
-// Cross-links climateRecommendations()'s rule-based tips (below) to
-// ENGINE.sensitivityAnalysis's real re-simulated Δ-score, by category --
-// keyed on the tips' own fixed text since there are only ever 7 of them.
-// Tips with no corresponding perturbation (ACH/ventilation-related, and
-// the "no single factor dominates" catch-all) are intentionally left out,
-// rather than attaching a number that doesn't really apply to them.
-const RECOMMENDATION_TO_PERTURBATION = {
-  "High wall/roof insulation": "Insulation thickness",
-  "Minimize window area, favor light-colored/reflective finishes": "Window area",
-  "South-facing orientation with generous glazing": "Orientation",
-  "Add thermal mass (stone, water, or PCM)": "Thermal mass"
-};
-
 window.U = {
   n(x, d) { d = d == null ? 1 : d; return Number.isFinite(x) ? x.toFixed(d) : "—"; },
   // Parses a form value to a float, falling back when it's empty/NaN —
@@ -184,21 +170,6 @@ window.U = {
       candidates.push({ priority: 3, text: "Balanced insulation and moderate window area", reason: "mild climate — no single factor dominates the design" });
     }
     return candidates.sort((a, b) => b.priority - a.priority).slice(0, 3);
-  },
-
-  // Attaches a numeric expected-impact (Δ thermal-comfort-score points)
-  // to each climateRecommendations() tip that has a matching
-  // sensitivityAnalysis perturbation -- see RECOMMENDATION_TO_PERTURBATION
-  // above. `sensitivity` is an ENGINE.sensitivityAnalysis(...) result (or
-  // null/undefined, e.g. before Optimization has ever run); tips.deltaScore
-  // is null wherever there's no match or no sensitivity data yet.
-  recommendationImpact(tips, sensitivity) {
-    const impacts = sensitivity && Array.isArray(sensitivity.impacts) ? sensitivity.impacts : null;
-    return tips.map(t => {
-      const key = RECOMMENDATION_TO_PERTURBATION[t.text];
-      const impact = impacts && key ? impacts.find(i => i.parameter === key) : null;
-      return Object.assign({}, t, { deltaScore: impact ? impact.deltaScore : null });
-    });
   },
 
   // Metric → Imperial display conversions. The engine and internal state

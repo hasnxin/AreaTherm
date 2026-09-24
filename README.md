@@ -13,56 +13,43 @@ Specific Shelter for Thermal Comfort Maintenance,"* initial focus: Ladakh.
 
 Rather than hand over Angular/Spring Boot source that can't be verified
 end-to-end this early ("no superficial UI mockup" is a hard requirement in
-the brief), **Phase 1 was a complete, dependency-free, physics-based
-prototype in HTML/CSS/vanilla JS**, with every calculation running client-side.
-That prototype UI is still exactly what runs today — same screens, same
-physics — but it's no longer standalone: the frontend now requires the real
-Spring Boot backend (`backend/`) described below to be running, and every
-official simulation/optimization result is computed server-side by a
-numerically-verified Java port of this same engine, not recomputed
-redundantly in two places. The thermal engine itself is a real hourly RC
-energy-balance simulation (with occupant sensible/latent heat and
-occupancy-linked ventilation), the optimizer evaluates 567 real candidate
-designs, and every number on screen is re-derivable in the "Explain
-Calculation" panels.
+the brief), **Phase 1 is a complete, dependency-free, physics-based
+prototype in HTML/CSS/vanilla JS**.
+It is not a mockup: the thermal engine is a real hourly RC energy-balance
+simulation (with occupant sensible/latent heat and occupancy-linked
+ventilation), the optimizer evaluates 60 real candidate designs, and every
+number on screen is computed live and re-derivable in the "Explain
+Calculation" panels. It is also deliberately **dependency-free at runtime**:
+no CDN-hosted library is required for the app to work, including PDF/CSV
+export — see "Reliability & offline behaviour" below for why that matters
+for a live demo.
 
 `ARCHITECTURE.md`, `DATABASE_SCHEMA.sql`, and `API_SPEC.md` define the target
-production stack (Angular 18 + Spring Boot + MySQL + Redis). The Spring Boot
-side of that target now exists and is wired up — see [`backend/`](backend/)
-and [`backend/README.md`](backend/README.md). The Angular rewrite of this
-frontend is still future work; this vanilla-JS UI talks to the real backend
-API directly in the meantime.
+production stack (Angular 18 + Spring Boot + MySQL + Redis) and are written so
+the prototype's modules (`app/js/engine.js`, `store.js`, `data.js`) port onto
+that backend mechanically rather than needing a redesign.
 
 ## Run it
 
-Two processes now, both required — the frontend is not standalone:
+No build step. Any static file server works:
 
 ```bash
-# 1. Backend (Spring Boot, H2 file DB — no external services needed)
-cd backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
-
-# 2. Frontend static server, in a separate terminal
 python -m http.server 8743 --directory app
 ```
 
-Then open `http://localhost:8743` and register an account (or sign in) —
-every screen past the login gate needs a real backend session. (Opening
-`app/index.html` directly via `file://` no longer works on its own, since it
-still needs the backend reachable at `http://localhost:8080`.) See
-[`backend/README.md`](backend/README.md) for backend details.
+Then open `http://localhost:8743`. (Opening `app/index.html` directly via
+`file://` also works in most browsers — a static server just avoids any
+browser file-access restrictions.)
 
 ## Demo
 
-Register/sign in, then click **"Run Live Demo"** (top-right, on every
-screen). This fetches real live weather for Leh from Open-Meteo + NASA
-POWER, runs an hourly thermal simulation on a baseline shelter (on the
-backend), runs the design optimizer (567 candidate configurations, also on
-the backend), and lands you on **Evaluator Summary** — a 2-3 minute story of
-the problem, the model, and the recommended design. No hand-authored or
-illustrative climate data is used anywhere — every climate figure is live
-(falling back to cache, honestly labelled, if the network is briefly
-unavailable); the simulation/optimization themselves are always real,
-server-computed results, never mocked.
+Click **"Run Live Demo"** (top-right, on every screen). This fetches real
+live weather for Leh from Open-Meteo + NASA POWER, runs an hourly thermal
+simulation on a baseline shelter, runs the design optimizer (60 candidate
+configurations), and lands you on **Evaluator Summary** — a 2-3 minute story
+of the problem, the model, and the recommended design. No hand-authored or
+illustrative climate data is used anywhere — every figure is live (falling
+back to cache, honestly labelled, if the network is briefly unavailable).
 
 To walk the full workflow manually: **Dashboard → Location & Climate → Shelter
 Designer → Materials → Thermal Simulation → Optimization → What-If Analysis →
@@ -80,7 +67,7 @@ Validation → Reports → Evaluator Summary → Settings** (left nav, top to bo
 | Elevation | **Real** — fetched from Open-Meteo's Elevation API (SRTM-derived, no key). See `app/js/elevation.js`. |
 | Material properties | **Engineering database reference values** — editable, labelled "verify for actual construction," explicitly **not** sourced from a CPWD/state PWD Schedule of Rates |
 | Validation module error metrics (MAE/RMSE/MAPE/R²) | Real math, run against **user-provided or placeholder** measured rows — no field data exists yet |
-| PDF report | **Real** — server-generated (OpenPDF/Flying Saucer) from an official backend simulation/optimization run; a browser print-to-PDF of the on-screen report is also still available as a quick offline alternative |
+| PDF report | Browser print-to-PDF (works fully offline, no library; production target: server-side rendering) |
 | CSV export (design candidates, material sheet, validation data) | Plain-JS CSV generation, no library — opens directly in Excel/Sheets |
 
 No hand-authored, illustrative, or hardcoded climate dataset ships with this
@@ -125,39 +112,32 @@ accuracy claim — see the "Scientific Integrity" note in `ARCHITECTURE.md` §8.
 AreaTherm/
   README.md                 you are here
   ARCHITECTURE.md           production architecture, thermal model, optimization methodology, UI map, roadmap
-  DATABASE_SCHEMA.sql        MySQL schema backend/ actually implements (all entities from the brief's §20)
-  API_SPEC.md                REST API backend/ actually implements
-  backend/                   Spring Boot 3 backend — see backend/README.md
-  app/                       the frontend (open app/index.html; requires backend/ running)
+  DATABASE_SCHEMA.sql        target MySQL schema (all entities from the brief's §20)
+  API_SPEC.md                target REST API for the Spring Boot backend
+  app/                       the running prototype (open app/index.html)
     index.html
     sw.js                     app-shell service worker — caches only this app's own HTML/CSS/JS, never climate data
     css/styles.css            design system + dark mode
     js/
-      config.js               branding + units + default weights + reliability/backend tuning (rename the app here)
+      config.js               branding + units + default weights + reliability tuning (rename the app here)
       data.js                 10 reference locations, material library, comfort profiles, occupancy activity levels
       reliability.js          timeout / retry / circuit breaker / tiered cache, shared by every API client
-      backend-api.js           thin client for backend/'s REST API (auth, CRUD, async job polling)
-      adapter.js                bridges local design/state shapes <-> backend DTOs; orchestrates official runs
       weather-api.js          Open-Meteo live weather client (temp, solar, wind, RH, cloud, precipitation)
       nasa-power.js           NASA POWER climatology client (GHI/DNI/diffuse solar, temperature, monthly series)
       elevation.js             Open-Meteo Elevation API client (real elevation, no key)
-      engine.js                thermal engine + occupancy heat model + optimizer + validation stats (pure functions, no DOM) — still used for live preview/what-if/sensitivity; official runs use backend/'s verified Java port instead
+      engine.js                thermal engine + occupancy heat model + optimizer + validation stats (pure functions, no DOM)
       charts.js                dependency-free inline-SVG chart renderer (line/bar/stacked/monthly/scatter/gauge)
       export.js                dependency-free CSV export
       validator.js             real-data validation: measured-vs-predicted datasets scored against the simulation
       shelter3d.js              optional 3D shelter preview (vanilla Three.js via an import map, no build step)
-      store.js                 app state ("database"); projects/designs/etc. are backend-persisted now
-      util.js, ui-auth.js, ui-1.js, ui-2.js, ui-3.js, app.js   screens + router + auth gate + global error handling
+      store.js                 app state ("database"), field-compatible with DATABASE_SCHEMA.sql
+      util.js, ui-1.js, ui-2.js, ui-3.js, app.js   screens + router + global error handling
 ```
 
 ## Known limitations of this pass
 
-- Real authentication now exists (JWT, register/login — see
-  `backend/README.md`), but authorization scoping only reaches the
-  top-level `Project` resource; a logged-in user can still reach another
-  user's child resources (locations, designs, simulations, ...) by guessing
-  an id. No ML surrogate model either (no training data exists yet — see
-  `ARCHITECTURE.md` §9); the backend's `ml/` package is a deliberate stub.
+- No authentication/RBAC persistence, no ML surrogate model (no training
+  data exists yet — see `ARCHITECTURE.md` §9).
 - The 3D shelter preview (Shelter Designer) is an illustrative box
   approximation — it doesn't model curved (circular/dome) or L-shaped
   footprints, and door/window placement isn't tied to the per-face data
@@ -173,34 +153,22 @@ AreaTherm/
   every calculation stay metric (SI) internally.
 - Simple mode shows Dashboard, Guided Setup, Materials, What-If Analysis,
   Reports and Settings only; Advanced mode exposes all screens.
-- Projects, shelter designs, locations, climate profiles, simulations, and
-  optimization runs are all backend-persisted now (real cross-device sync
-  via login) — see `DATABASE_SCHEMA.sql` for the data model. Validation
-  datasets and simulation history are the two exceptions: still device-local
-  (`localStorage`/IndexedDB) only, since no backend endpoint exists for them
-  yet.
-- Shelter Designer's live preview, What-If Analysis, Sensitivity Analysis,
-  and Explain Calculation's narration all still run the physics engine
-  client-side, by design — they're instant interactive feedback that's never
-  recorded as an official result, and the backend's simulation/optimization
-  endpoints are async/polled (too slow for live-typing feedback). Every
-  *official*, recorded run (Thermal Simulation, Optimization, Guided Setup,
-  Run Live Demo) goes through the backend.
+- State persists to `localStorage` per browser (not a shared multi-user
+  database) — see `DATABASE_SCHEMA.sql` for the production data model.
+  Multiple named projects can be saved, switched between, and deleted
+  locally, but there's no cross-device sync.
 - A service worker (`app/sw.js`) caches only the app's own HTML/CSS/JS so
-  the UI shell loads with no network — it never caches or fabricates climate
-  data, and doesn't make the app usable offline anymore now that the backend
-  is required for login and every official action.
+  the UI loads and runs with no network — it never caches or fabricates
+  climate data. Offline runs are limited to whatever locations already have
+  a live weather fetch cached in `localStorage` from an earlier online
+  session (7-day Open-Meteo / 5-day NASA POWER TTL).
 
 ## Next steps toward the full brief
 
-1. ~~Stand up the Spring Boot/MySQL backend~~ — done, see [`backend/`](backend/).
-   ~~Wire this frontend to that API~~ — done (auth, persistence, and
-   official simulation/optimization runs all go through the backend now).
-   Remaining backend gaps: authorization scoping beyond `Project`, a real ML
-   surrogate, and endpoints for `/explain`, `/sensitivity`, and validation
-   datasets (all still client-side only).
-2. Build the Angular frontend against the same backend API, as originally
-   scoped — this vanilla-JS UI keeps working as-is either way.
+1. Stand up the Spring Boot/MySQL backend against `DATABASE_SCHEMA.sql` and
+   `API_SPEC.md`; port `engine.js` to a Java `thermal` service (it's already
+   framework-free, so this is largely a language port, not a redesign).
+2. Wire the Angular frontend to that API instead of `store.js`.
 3. Instrument a pilot shelter in Leh/Kargil and feed real readings into the
    Validation module to get an actual MAE/RMSE against the model.
 4. Add ERA5 / IMD / Solcast archive adapters behind the existing
