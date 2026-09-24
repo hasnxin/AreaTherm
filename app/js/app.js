@@ -1,7 +1,8 @@
 /* AreaTherm — router + bootstrap */
 window.APP = (function () {
-  const STORE = window.APP_STORE, ENGINE = window.APP_ENGINE, CFG = window.APP_CONFIG;
+  const STORE = window.APP_STORE, ENGINE = window.APP_ENGINE, CFG = window.APP_CONFIG, BACKEND = window.APP_BACKEND, ADAPTER = window.APP_ADAPTER;
   const viewRoot = () => document.getElementById("viewRoot");
+  const AUTH_ROUTES = ["login", "register", "verify-email"];
 
   const ROUTES = {
     dashboard: window.UI.renderDashboard,
@@ -17,12 +18,37 @@ window.APP = (function () {
     "climate-card": window.UI.renderClimateCard,
     "material-comparison": window.UI.renderMaterialComparison,
     evaluator: window.UI.renderEvaluator,
-    settings: window.UI.renderSettings
+    settings: window.UI.renderSettings,
+    login: window.UI.renderLogin,
+    register: window.UI.renderRegister,
+    "verify-email": window.UI.renderVerifyEmail
   };
 
   function currentRoute() {
     const hash = location.hash.replace("#/", "");
     return ROUTES[hash] ? hash : "dashboard";
+  }
+
+  // The app requires the backend (see backend-api.js) — every route except
+  // login/register is gated on holding a valid, unexpired token. There's no
+  // refresh mechanism (flat 120-minute JWT), so an expired token routes back
+  // here the same way a never-logged-in visitor does.
+  function updateAuthChrome(authed) {
+    const userBadge = document.getElementById("userBadge");
+    const logoutBtn = document.getElementById("logoutBtn");
+    if (!userBadge || !logoutBtn) return;
+    userBadge.hidden = !authed;
+    logoutBtn.hidden = !authed;
+    if (authed) {
+      const auth = BACKEND.getAuth();
+      userBadge.textContent = (auth && auth.email) || "";
+    }
+  }
+
+  function logout() {
+    BACKEND.logout();
+    toast("Signed out.");
+    render();
   }
 
   function logError(context, err) {
@@ -53,7 +79,12 @@ window.APP = (function () {
   }
 
   function render() {
+    const authed = BACKEND.isAuthValid();
+    document.body.classList.toggle("unauthenticated", !authed);
     const route = currentRoute();
+    if (!authed && AUTH_ROUTES.indexOf(route) === -1) { location.hash = "#/login"; return; }
+    if (authed && AUTH_ROUTES.indexOf(route) !== -1) { location.hash = "#/dashboard"; return; }
+    updateAuthChrome(authed);
     try {
       document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("active", a.dataset.route === route));
       document.getElementById("projectName").textContent = STORE.get().project.name;
@@ -104,8 +135,9 @@ window.APP = (function () {
     document.documentElement.setAttribute("data-theme", theme === "DARK" ? "dark" : "light");
   }
 
-  // "Live Demo" fetches real weather (Open-Meteo + NASA POWER) for Leh —
-  // no illustrative/hand-authored climate data anywhere in the app.
+  // "Live Demo" fetches real weather (Open-Meteo + NASA POWER) for Leh, then
+  // runs an official (backend-computed, recorded) simulation + optimization —
+  // same as the standalone Simulation/Optimization screens, just chained.
   async function runLiveDemo() {
     const btn = document.getElementById("runLiveDemoBtn");
     if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
@@ -117,11 +149,13 @@ window.APP = (function () {
       STORE.save();
       const check = ENGINE.validateDesign(s.design);
       if (!check.valid) throw new Error("Default design failed validation: " + check.errors.join(" "));
-      const season = STORE.currentSeason();
-      const result = ENGINE.runSimulation(s.design, season, s.simConfig);
+
+      const result = await ADAPTER.runOfficialSimulation(s, (msg) => toast(msg));
       STORE.recordSimulation(result);
-      const opt = ENGINE.runOptimization(s.design, season, s.simConfig, s.weights);
+
+      const opt = await ADAPTER.runOfficialOptimization(s, s.weights, false, (msg) => toast(msg));
       STORE.recordOptimization(opt);
+
       navigate("evaluator");
       const tierNote = s.climateSource && s.climateSource.tier !== "LIVE" ? ` (${s.climateSource.tier === "FRESH_CACHE" ? "served from cache" : "served from stale cache — network issue"})` : "";
       toast("Live demo complete: real climate → simulation → optimization." + tierNote);
@@ -156,6 +190,7 @@ window.APP = (function () {
 
     window.addEventListener("hashchange", render);
     document.getElementById("runLiveDemoBtn").addEventListener("click", runLiveDemo);
+    document.getElementById("logoutBtn").addEventListener("click", logout);
 
     // App-shell offline support: caches only this app's own HTML/CSS/JS,
     // never climate data (see sw.js header comment). Registration failure
@@ -217,7 +252,7 @@ window.APP = (function () {
    }
   }
 
-  return { render, navigate, toast, showExplain, runLiveDemo, init, logError, applyTheme };
+  return { render, navigate, toast, showExplain, runLiveDemo, logout, init, logError, applyTheme };
 })();
 
 document.addEventListener("DOMContentLoaded", window.APP.init);

@@ -1,0 +1,11 @@
+# Full documented target: MySQL 8 via docker-compose.yml (run with Podman:
+# `podman compose up -d` from backend/), matching ARCHITECTURE.md exactly.
+# Run with: mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=docker
+spring:
+  datasource:
+    url: jdbc:mysql://${AREATHERM_DB_HOST:localhost}:${AREATHERM_DB_PORT:3306}/${AREATHERM_DB_NAME:areatherm}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${AREATHERM_DB_USER:areatherm}
+    password: ${AREATHERM_DB_PASSWORD:areatherm}
+  flyway:
+    locations: classpath:db/migration

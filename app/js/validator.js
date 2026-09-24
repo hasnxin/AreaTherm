@@ -42,6 +42,22 @@ window.APP_VALIDATOR = (function () {
       errors.push({ field: "dOccupancy", message: "Occupancy must be between 0 and 50 people." });
     }
 
+    if (d.occupancySchedule != null) {
+      if (!Array.isArray(d.occupancySchedule) || d.occupancySchedule.length !== 24) {
+        errors.push({ field: "dOccupancySchedule", message: "Occupancy schedule must have exactly 24 hourly entries." });
+      } else {
+        const validActivity = new Set(["SLEEPING", "SEATED", "LIGHT", "MODERATE", "HEAVY"]);
+        d.occupancySchedule.forEach((entry, h) => {
+          if (!entry || !(entry.persons >= 0 && entry.persons <= 50)) {
+            errors.push({ field: "dOccupancySchedule", message: `Occupancy schedule hour ${h}: persons must be between 0 and 50.` });
+          }
+          if (!entry || !validActivity.has(entry.activityId)) {
+            errors.push({ field: "dOccupancySchedule", message: `Occupancy schedule hour ${h}: unrecognized activity level.` });
+          }
+        });
+      }
+    }
+
     [["wall", "Wall", "dWallInsThick"], ["roof", "Roof", "dRoofInsThick"]].forEach(([key, label, field]) => {
       const t = d[key] && d[key].insulationThicknessMm;
       if (t != null && !(t >= 0 && t <= 200)) {

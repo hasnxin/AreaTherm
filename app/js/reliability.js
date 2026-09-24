@@ -43,13 +43,20 @@ window.APP_RELIABLE = (function () {
   function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
   // ---- Fetch with an actual request timeout (AbortController) ------------
-  async function fetchJsonWithTimeout(url, timeoutMs) {
+  // fetchOpts (optional): {method, headers, body} merged into the fetch()
+  // call — defaults to a plain GET, so the three existing callers (each
+  // passing only `url`) are unaffected. On a non-2xx response, the parsed
+  // JSON body (if any) is attached to the thrown Error as `.body`, and its
+  // `status` as `.status`, so callers needing the real status/error payload
+  // (e.g. a 401 handler, or surfacing a backend's {message} field) don't
+  // have to re-parse the response themselves.
+  async function fetchJsonWithTimeout(url, timeoutMs, fetchOpts) {
     const ms = timeoutMs || CFG.TIMEOUT_MS;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ms);
     let resp;
     try {
-      resp = await fetch(url, { signal: controller.signal });
+      resp = await fetch(url, Object.assign({ signal: controller.signal }, fetchOpts));
     } catch (e) {
       clearTimeout(timer);
       if (e.name === "AbortError") throw new Error("Request timed out after " + (ms / 1000) + "s");
@@ -59,7 +66,15 @@ window.APP_RELIABLE = (function () {
       throw new Error("Network error — check your internet connection.");
     }
     clearTimeout(timer);
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    if (!resp.ok) {
+      let body = null;
+      try { body = await resp.json(); } catch (e) { /* no/non-JSON body */ }
+      const err = new Error((body && body.message) || ("HTTP " + resp.status));
+      err.status = resp.status;
+      err.body = body;
+      throw err;
+    }
+    if (resp.status === 204) return null; // No Content — no body to parse
     return await resp.json();
   }
 

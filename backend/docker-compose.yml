@@ -1,0 +1,27 @@
+name: areatherm
+
+services:
+  mysql:
+    # Fully-qualified image ref -- Podman's unqualified-search behavior is
+    # registries.conf-dependent, so a bare "mysql:8" can resolve differently
+    # (or prompt interactively) depending on the local Podman setup.
+    image: docker.io/library/mysql:8.0
+    container_name: areatherm-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: areatherm
+      MYSQL_USER: areatherm
+      MYSQL_PASSWORD: areatherm
+      MYSQL_ROOT_PASSWORD: areatherm_root
+    ports:
+      - "3306:3306"
+    volumes:
+      - areatherm_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  areatherm_mysql_data:

@@ -177,6 +177,93 @@ window.UI = window.UI || {};
     return bullets;
   }
 
+  // ERA5 (optional, opt-in real reanalysis data) -- local UI state only,
+  // same pattern as ui-2.js's annual-analysis result: never persisted,
+  // resets on reload. `active` only ever mirrors onto the live season
+  // object (STORE.currentSeason()) once the user explicitly turns the
+  // toggle on -- see era5ActiveToggle's wiring below.
+  let era5 = { checkedAvailability: false, available: false, status: "idle", profile: null, period: null, error: null, active: false };
+
+  // ERA5's real-world processing lag means the current/previous month often
+  // isn't published yet -- 2 months back is safely within its normal
+  // availability window without the user needing to pick a date themselves.
+  function defaultEra5Period() {
+    const d = new Date();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() - 2);
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+  }
+
+  function era5CardHtml(state) {
+    const period = defaultEra5Period();
+    const periodLabel = `${period.year}-${String(period.month).padStart(2, "0")}`;
+    return `
+    <div class="card" style="margin:10px 0 16px;">
+      <h3>ERA5 Reanalysis Data <span class="tag tag-demo">experimental, opt-in</span></h3>
+      ${!state.checkedAvailability ? `<p class="hint">Checking availability…</p>` : !state.available ? `
+      <p class="hint">Not available on this server — no Copernicus CDS API key is configured. Open-Meteo/NASA POWER (used above) remain the live default; nothing else here is affected.</p>
+      ` : `
+      <p class="hint">Real ECMWF reanalysis data for ${U.esc(periodLabel)} (typically ±0.3°C vs. a live forecast's ±1-2°C) — off by default, and only ever replaces the hourly curve above once you explicitly turn it on below.</p>
+      <button class="btn btn-sm" id="era5FetchBtn" ${state.status === "fetching" ? "disabled" : ""}>${state.status === "fetching" ? "Fetching (CDS queue time varies, can take up to ~30 min)…" : state.profile ? "Re-fetch" : "Fetch ERA5 data for " + U.esc(periodLabel)}</button>
+      ${state.profile ? `
+      <label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-weight:600; font-size:13px; cursor:pointer;">
+        <input type="checkbox" id="era5ActiveToggle" style="width:auto;" ${state.active ? "checked" : ""}>
+        Use ERA5 data for this simulation
+      </label>
+      <p class="hint" style="margin-top:4px;">Fetched ground temperature: <b>${U.n(state.profile.groundTempC, 1)}°C</b> — ${state.active ? "applied as this design's ground-temperature override." : "applied automatically once the toggle above is on."}</p>
+      ` : ""}
+      ${state.status === "error" ? `<p class="hint status-error" style="margin-top:8px;">${U.esc(state.error)}</p>` : ""}
+      `}
+    </div>`;
+  }
+
+  function wireEra5Card(root, s, season, box) {
+    if (!era5.checkedAvailability) {
+      window.APP_BACKEND.era5Availability()
+        .then(res => { era5.available = !!res.available; })
+        .catch(() => { era5.available = false; })
+        .finally(() => {
+          era5.checkedAvailability = true;
+          if (U.qs("#climateSummaryBox", root)) renderClimateCards(root, s, season);
+        });
+    }
+    U.on("#era5FetchBtn", "click", async () => {
+      era5.status = "fetching"; era5.error = null;
+      renderClimateCards(root, s, season);
+      try {
+        const period = defaultEra5Period();
+        const created = await window.APP_BACKEND.createEra5Fetch({
+          latitude: s.location.latitude, longitude: s.location.longitude, year: period.year, month: period.month
+        });
+        // CDS queue time is real and can run well past 5 minutes before a
+        // job even starts -- confirmed against a real submitted job during
+        // testing, not a guess. 30 minutes matches the backend's own
+        // poll-timeout-ms (application.yml areatherm.era5).
+        const final = await window.APP_BACKEND.pollEra5Fetch(created.id, { intervalMs: 8000, timeoutMs: 1800000 });
+        if (final.status !== "COMPLETE") throw new Error(final.errorMessage || "ERA5 fetch failed on the server.");
+        era5.profile = final.profile;
+        era5.period = `${period.year}-${String(period.month).padStart(2, "0")}`;
+        era5.status = "ready";
+      } catch (e) {
+        era5.status = "error";
+        era5.error = "Could not fetch ERA5 data: " + e.message;
+      }
+      if (U.qs("#climateSummaryBox", root)) renderClimateCards(root, s, season);
+    }, box);
+    U.on("#era5ActiveToggle", "change", () => {
+      const checked = U.qs("#era5ActiveToggle", box).checked;
+      era5.active = checked;
+      const liveSeason = STORE.currentSeason();
+      if (liveSeason) {
+        liveSeason.hourly = checked && era5.profile ? era5.profile.hourly : null;
+        STORE.save();
+      }
+      if (checked && era5.profile) STORE.updateDesign({ groundTempC: era5.profile.groundTempC });
+      window.APP.toast(checked ? "ERA5 data applied — re-run the simulation to see its effect." : "Reverted to the live-forecast hourly curve.");
+      window.APP.render();
+    }, box);
+  }
+
   function renderClimateCards(root, s, season) {
     const box = U.qs("#climateSummaryBox", root);
     if (!box) return;
@@ -242,13 +329,18 @@ window.UI = window.UI || {};
         const zone = U.classifyClimate(s.location, season);
         const recs = U.climateRecommendations(s.location, season);
         if (!recs.length) return "";
+        // Best-effort: a mid-edit/incomplete design can fail to simulate --
+        // the tips below are still useful without a Δ-score in that case.
+        let sensitivity = null;
+        try { sensitivity = ENGINE.sensitivityAnalysis(s.design, season, s.simConfig, s.weights); } catch (e) { /* tips render without a Δ-score */ }
+        const recsWithImpact = U.recommendationImpact(recs, sensitivity);
         return `
         <div class="card" style="margin-top:14px; background:var(--bg);">
           <h3>Design Tips for This Climate ${zone ? `<span class="tag tag-model">${U.esc(zone)}</span>` : ""}</h3>
           <ul class="checklist">
-            ${recs.map(r => `<li><b>${U.esc(r.text)}</b> — ${U.esc(r.reason)}</li>`).join("")}
+            ${recsWithImpact.map(r => `<li><b>${U.esc(r.text)}</b>${r.deltaScore != null ? ` <span class="tag tag-model">Δ${r.deltaScore >= 0 ? "+" : ""}${r.deltaScore.toFixed(1)} pts</span>` : ""} — ${U.esc(r.reason)}</li>`).join("")}
           </ul>
-          <p class="hint" style="margin-top:6px;">Rule-based guidance derived from this location's own loaded climate numbers, not a lookup table of per-city advice.</p>
+          <p class="hint" style="margin-top:6px;">Rule-based guidance derived from this location's own loaded climate numbers, not a lookup table of per-city advice. Where shown, Δ points is that factor's real re-simulated impact on the thermal comfort score (see Optimization → Sensitivity Analysis).</p>
         </div>`;
       })()}
 
@@ -260,8 +352,9 @@ window.UI = window.UI || {};
       <div class="data-badge illustrative" style="margin-top:12px;">⚠ Annual solar figure (${loc.annualSolarKwhM2Yr} kWh/m²/yr) is extrapolated from the current 7-day forecast, not a real climatology — NASA POWER climatology fetch unavailable.</div>
       ` : "")}
 
-      <h3 style="margin-top:16px;">24-Hour Ambient Temperature &amp; Solar Irradiance ${season.hourly ? "(live hourly curve)" : "(model input curve)"}</h3>
+      <h3 style="margin-top:16px;">24-Hour Ambient Temperature &amp; Solar Irradiance ${era5.active && era5.profile ? '<span class="tag tag-model">ERA5 reanalysis, ' + U.esc(era5.period) + '</span>' : season.hourly ? "(live hourly curve)" : "(model input curve)"}</h3>
       <div id="climateChart"></div>
+      ${era5CardHtml(era5)}
       ${s.location && s.location.solarDataSource && s.location.solarDataSource.monthlyTemp ? `
       <h3 style="margin-top:20px;">Monthly Climate Normals <span class="tag tag-model">NASA POWER, ${U.esc(s.location.solarDataSource.period)}</span></h3>
       <div class="grid grid-2">
@@ -304,6 +397,8 @@ window.UI = window.UI || {};
       STORE.save();
       window.APP.render();
     }, box);
+
+    wireEra5Card(root, s, season, box);
   }
 
   UI.renderLocation = function (root) {
@@ -369,6 +464,22 @@ window.UI = window.UI || {};
     renderClimateCards(root, s, season);
     initLocationMap(root);
 
+    // Fire-and-forget backend save after a successful live fetch — never
+    // blocks the already-successful local UI update, and failure only gets
+    // a soft toast (the live climate itself is unaffected either way). Note:
+    // the data-source transparency badge always keeps reading
+    // state.climateSource (client-side, set by STORE.loadRealClimate/
+    // loadCustomLocation) — never this persisted copy, which the backend
+    // unconditionally labels USER_PROVIDED regardless of how it was really
+    // obtained (see API_SPEC.md's Conventions section).
+    function persistLocationInBackground() {
+      const ADAPTER = window.APP_ADAPTER;
+      const st = STORE.get();
+      ADAPTER.ensureProject(st)
+        .then(projectId => ADAPTER.ensureLocation(st, projectId).then(locationId => ADAPTER.ensureClimateProfile(st, projectId, locationId)))
+        .catch(e => window.APP.toast("Weather loaded, but saving it to your account failed: " + e.message));
+    }
+
     async function loadLocationById(id) {
       const btn = U.qs("#loadRealBtn", root);
       const statusEl = U.qs("#fetchStatus", root);
@@ -378,6 +489,7 @@ window.UI = window.UI || {};
         await STORE.loadRealClimate(id);
         window.APP.render();
         window.APP.toast("Weather loaded (" + STORE.get().climateSource.label + ").");
+        persistLocationInBackground();
       } catch (e) {
         statusEl.classList.add("status-error");
         statusEl.textContent = "Could not fetch live weather: " + e.message + " — check your internet connection and try again.";
@@ -409,6 +521,7 @@ window.UI = window.UI || {};
         }
         window.APP.render();
         window.APP.toast(`Weather loaded (${near ? near.name : STORE.get().location.label}).`);
+        persistLocationInBackground();
       } catch (e) {
         if (statusEl) { statusEl.classList.add("status-error"); statusEl.textContent = "Could not fetch live weather: " + e.message + " — check your internet connection and try again."; }
         if (btn) { btn.disabled = false; btn.classList.remove("is-loading"); }
@@ -468,6 +581,7 @@ window.UI = window.UI || {};
         <div class="form-inline">
           <div class="form-row"><label>Min comfortable temp (°C)</label><input id="comfortMin" type="number" value="${baseMin}"></div>
           <div class="form-row"><label>Max comfortable temp (°C)</label><input id="comfortMax" type="number" value="${c.max}"></div>
+          <div class="form-row"><label>&nbsp;</label><button type="button" class="btn btn-sm" id="suggestComfortBtn">Suggest from site &amp; occupancy</button></div>
           <div class="form-row"><label>Clothing level</label>
             <select id="comfortClothing">${DATA.CLOTHING_LEVELS.map(cl => `<option value="${cl.id}" ${clothingId === cl.id ? "selected" : ""}>${cl.label} (${cl.clo} clo)</option>`).join("")}</select>
           </div>
@@ -501,6 +615,15 @@ window.UI = window.UI || {};
       U.on(sel, "input", recompute, root);
       U.on(sel, "change", recompute, root);
     });
+    U.on("#suggestComfortBtn", "click", () => {
+      const s = STORE.get();
+      const lat = s.location ? s.location.latitude : null;
+      const suggestion = DATA.suggestComfortBand(lat, s.design.occupancy);
+      U.qs("#comfortMin", root).value = suggestion.baseMin;
+      U.qs("#comfortMax", root).value = suggestion.max;
+      recompute();
+      window.APP.toast("Suggested a starting comfort band — a heuristic prefill, review before saving.");
+    }, root);
     U.on("#saveComfortBtn", "click", () => {
       const baseMin = parseFloat(U.qs("#comfortMin", root).value);
       const max = parseFloat(U.qs("#comfortMax", root).value);
@@ -847,11 +970,27 @@ window.UI = window.UI || {};
           <fieldset>
             <legend>Occupancy &amp; Internal Gain</legend>
             <div class="form-inline">
+              <div class="form-row"><label>Occupancy pattern</label>
+                <select id="dOccupancyMode">
+                  <option value="FLAT" ${!d.occupancySchedule ? "selected" : ""}>Flat (single count, all day)</option>
+                  ${DATA.OCCUPANCY_SCHEDULES.map(s => `<option value="${s.id}">${s.label}</option>`).join("")}
+                  <option value="CUSTOM" ${d.occupancySchedule ? "selected" : ""}>Custom (edit hour by hour)</option>
+                </select>
+              </div>
+              <div class="form-row"><label>Equipment / other heat gain (W)</label><input id="dInternal" type="number" value="${d.internalHeatGainW}"></div>
+            </div>
+            <div class="form-inline" id="dFlatOccupancyRow" ${d.occupancySchedule ? "hidden" : ""}>
               <div class="form-row"><label>Occupancy (persons)</label><input id="dOccupancy" type="number" min="0" max="50" value="${d.occupancy}"></div>
               <div class="form-row"><label>Activity level</label>
                 <select id="dActivity">${DATA.ACTIVITY_LEVELS.map(a => `<option value="${a.id}" ${(d.occupancyActivity||"SEATED")===a.id?"selected":""}>${a.label} (${a.watts} W/person)</option>`).join("")}</select>
               </div>
-              <div class="form-row"><label>Equipment / other heat gain (W)</label><input id="dInternal" type="number" value="${d.internalHeatGainW}"></div>
+            </div>
+            <div id="dScheduleEditor" ${d.occupancySchedule ? "" : "hidden"}>
+              <p class="hint" style="margin:6px 0;">One row per hour — occupant heat gain and its ventilation load both follow this pattern through the simulation, instead of one flat number for the whole run.</p>
+              <div class="table-wrap" style="max-height:280px; overflow-y:auto;">
+                <table><thead><tr><th>Hour</th><th>Persons</th><th>Activity</th></tr></thead>
+                <tbody id="dScheduleBody"></tbody></table>
+              </div>
             </div>
             <div id="occupancyPreview" class="hint"></div>
           </fieldset>
@@ -968,16 +1107,75 @@ window.UI = window.UI || {};
       }
     })(10);
 
+    function scheduleRowHtml(hour, entry) {
+      return `<tr>
+        <td>${String(hour).padStart(2, "0")}:00</td>
+        <td><input class="schedPersons" type="number" min="0" max="50" value="${entry.persons}" style="width:70px;"></td>
+        <td><select class="schedActivity">${DATA.ACTIVITY_LEVELS.map(a => `<option value="${a.id}" ${entry.activityId === a.id ? "selected" : ""}>${a.label}</option>`).join("")}</select></td>
+      </tr>`;
+    }
+    function renderScheduleEditor(schedule) {
+      U.qs("#dScheduleBody", root).innerHTML = schedule.map((e, h) => scheduleRowHtml(h, e)).join("");
+      U.qsa("#dScheduleBody input, #dScheduleBody select", root).forEach(el => {
+        el.addEventListener("input", refreshOccupancyPreview);
+        el.addEventListener("change", refreshOccupancyPreview);
+      });
+    }
+    function readScheduleFromForm() {
+      const mode = U.qs("#dOccupancyMode", root) ? U.qs("#dOccupancyMode", root).value : "FLAT";
+      if (mode === "FLAT") return null;
+      const rows = U.qsa("#dScheduleBody tr", root);
+      if (rows.length !== 24) return null; // editor not populated yet -- treat as flat until it is
+      return rows.map(row => ({
+        persons: parseInt(U.qs(".schedPersons", row).value) || 0,
+        activityId: U.qs(".schedActivity", row).value
+      }));
+    }
+    U.on("#dOccupancyMode", "change", () => {
+      const mode = U.qs("#dOccupancyMode", root).value;
+      const flatRow = U.qs("#dFlatOccupancyRow", root), editor = U.qs("#dScheduleEditor", root);
+      if (mode === "FLAT") {
+        flatRow.hidden = false; editor.hidden = true;
+      } else {
+        flatRow.hidden = true; editor.hidden = false;
+        const preset = DATA.occupancyScheduleById(mode);
+        const current = readScheduleFromForm();
+        const seed = preset ? preset.schedule
+          // CUSTOM, no preset backing it: seed 24 identical rows from the
+          // current flat occupancy so switching in doesn't reset to zero.
+          : (current || Array.from({ length: 24 }, () => ({
+              persons: parseInt(U.qs("#dOccupancy", root).value) || 0,
+              activityId: U.qs("#dActivity", root).value
+            })));
+        renderScheduleEditor(seed);
+      }
+      refreshOccupancyPreview();
+    }, root);
+    if (d.occupancySchedule) renderScheduleEditor(d.occupancySchedule);
+
     function refreshOccupancyPreview() {
-      const persons = parseInt(U.qs("#dOccupancy", root).value) || 0;
-      const activityId = U.qs("#dActivity", root).value;
       const equipW = parseFloat(U.qs("#dInternal", root).value) || 0;
-      const occ = ENGINE.computeOccupancyHeat({ occupancy: persons, occupancyActivity: activityId, internalHeatGainW: equipW });
+      const mode = U.qs("#dOccupancyMode", root) ? U.qs("#dOccupancyMode", root).value : "FLAT";
+      if (mode === "FLAT") {
+        const persons = parseInt(U.qs("#dOccupancy", root).value) || 0;
+        const activityId = U.qs("#dActivity", root).value;
+        const occ = ENGINE.computeOccupancyHeat({ occupancy: persons, occupancyActivity: activityId, internalHeatGainW: equipW });
+        U.qs("#occupancyPreview", root).innerHTML =
+          `Occupant heat: <b>${U.n(occ.totalW, 0)} W</b> total (${U.n(occ.sensibleW, 0)} W sensible, heats the air +
+          ${U.n(occ.latentW, 0)} W latent, ≈${U.n(occ.latentKgPerHour, 2)} kg/h moisture, not simulated as humidity) +
+          ${U.n(equipW, 0)} W equipment. A per-person fresh-air ventilation allowance is also added — see the
+          Simulation page after running for the full sensible-gain-vs-ventilation-loss trade-off.`;
+        return;
+      }
+      const sched = readScheduleFromForm();
+      if (!sched) { U.qs("#occupancyPreview", root).innerHTML = ""; return; }
+      const perHour = sched.map(e => ENGINE.computeOccupancyHeat({ occupancy: e.persons, occupancyActivity: e.activityId, internalHeatGainW: equipW }));
+      const avg = key => perHour.reduce((s, o) => s + o[key], 0) / perHour.length;
+      const peak = Math.max(...sched.map(e => e.persons));
       U.qs("#occupancyPreview", root).innerHTML =
-        `Occupant heat: <b>${U.n(occ.totalW, 0)} W</b> total (${U.n(occ.sensibleW, 0)} W sensible, heats the air +
-        ${U.n(occ.latentW, 0)} W latent, ≈${U.n(occ.latentKgPerHour, 2)} kg/h moisture, not simulated as humidity) +
-        ${U.n(equipW, 0)} W equipment. A per-person fresh-air ventilation allowance is also added — see the
-        Simulation page after running for the full sensible-gain-vs-ventilation-loss trade-off.`;
+        `Scheduled occupancy: peak <b>${peak}</b> person(s), averaging <b>${U.n(avg("totalW"), 0)} W</b> occupant heat
+        (${U.n(avg("sensibleW"), 0)} W sensible avg) + ${U.n(equipW, 0)} W equipment — both occupant heat gain and its
+        ventilation load follow this pattern hour by hour in the simulation, not a single flat number.`;
     }
     refreshOccupancyPreview();
     ["#dOccupancy", "#dActivity", "#dInternal"].forEach(sel => U.on(sel, "input", refreshOccupancyPreview, root));
@@ -1029,6 +1227,7 @@ window.UI = window.UI || {};
         azimuthDeg: parseFloat(U.qs("#dAzimuth", root).value) || 0,
         airLeakageAch: U.numOr(U.qs("#dAch", root).value, d.airLeakageAch),
         occupancy, occupancyActivity,
+        occupancySchedule: readScheduleFromForm(),
         internalHeatGainW: parseFloat(U.qs("#dInternal", root).value) || 0,
         windows: readWindowGroupsFromForm(root, "d"),
         doors: [{ areaEach: parseFloat(U.qs("#dDoorArea", root).value) || d.doors[0].areaEach, count: 1, orientation: U.qs("#dDoorOrient", root).value }],
@@ -1137,25 +1336,35 @@ window.UI = window.UI || {};
     liveRecompute();
     wireWindowGroupsEvents(root, "d", readDesignFromForm, liveRecompute);
 
-    U.on("#saveDesignBtn", "click", () => {
+    // Persists the design to the backend (project + comfort profile +
+    // shelter design — location/climate aren't needed just to save a
+    // design). Reuses whatever backend ids this state already has (see
+    // adapter.js's ensure* functions), so repeat saves update the same
+    // rows via PUT rather than creating new ones.
+    async function saveDesignToBackend(btnSel, successMsg) {
       const draft = readDesignFromForm();
       const check = window.APP_VALIDATOR.validateDesign({ ...STORE.get(), design: draft });
       if (!check.valid) { U.showValidationErrors(root, "#designerErrors", check.errors); return; }
       U.showValidationErrors(root, "#designerErrors", []);
       STORE.updateDesign(draft);
-      window.APP.render();
-      window.APP.toast("Shelter design saved.");
-    }, root);
+      const btn = U.qs(btnSel, root);
+      if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
+      try {
+        const ADAPTER = window.APP_ADAPTER;
+        const s = STORE.get();
+        const projectId = await ADAPTER.ensureProject(s);
+        const comfortProfileId = await ADAPTER.ensureComfortProfile(s, projectId);
+        await ADAPTER.saveShelterDesign(s, projectId, comfortProfileId);
+        window.APP.render();
+        window.APP.toast(successMsg);
+      } catch (e) {
+        window.APP.toast("Saved locally, but the server save failed: " + e.message);
+        if (btn) { btn.disabled = false; btn.classList.remove("is-loading"); }
+      }
+    }
 
-    U.on("#saveMaterialsBtn", "click", () => {
-      const draft = readDesignFromForm();
-      const check = window.APP_VALIDATOR.validateDesign({ ...STORE.get(), design: draft });
-      if (!check.valid) { U.showValidationErrors(root, "#designerErrors", check.errors); return; }
-      U.showValidationErrors(root, "#designerErrors", []);
-      STORE.updateDesign(draft);
-      window.APP.render();
-      window.APP.toast("Construction saved.");
-    }, root);
+    U.on("#saveDesignBtn", "click", () => saveDesignToBackend("#saveDesignBtn", "Shelter design saved."), root);
+    U.on("#saveMaterialsBtn", "click", () => saveDesignToBackend("#saveMaterialsBtn", "Construction saved."), root);
   };
 
   // ---------------------------------------------------------------------
@@ -1200,21 +1409,41 @@ window.UI = window.UI || {};
         <p class="hint status-error" id="cmNameError" style="margin-top:6px;" hidden></p>
       </div>`;
 
-    U.on("#addMaterialBtn", "click", () => {
+    U.on("#addMaterialBtn", "click", async () => {
       const cat = U.qs("#cmCat", root).value, name = U.qs("#cmName", root).value.trim();
       const cmErr = U.qs("#cmNameError", root);
       if (!name) { if (cmErr) { cmErr.hidden = false; cmErr.textContent = "Enter a material name."; } return; }
       if (cmErr) cmErr.hidden = true;
+      const density = parseFloat(U.qs("#cmDensity", root).value) || null;
+      const k = parseFloat(U.qs("#cmK", root).value) || null;
+      const cp = parseFloat(U.qs("#cmCp", root).value) || null;
+      const localId = "custom_" + Date.now();
+      // The local catalog (DATA.MATERIALS) stays the source every local
+      // computation reads (live preview, what-if, sensitivity, the
+      // optimizer) — a custom material is added there immediately, same as
+      // before. It's ALSO posted to the backend (best-effort) so it gets a
+      // real numeric id usable in a saved shelter design; the material
+      // lookup cache is refreshed so a save right after this picks it up.
       DATA.MATERIALS.push({
-        id: "custom_" + Date.now(), category: cat, name,
-        density: parseFloat(U.qs("#cmDensity", root).value) || null,
-        k: parseFloat(U.qs("#cmK", root).value) || null,
-        cp: parseFloat(U.qs("#cmCp", root).value) || null,
+        id: localId, category: cat, name,
+        density, k, cp,
         absorptivity: 0.6, reflectivity: 0.4, emissivity: 0.9,
         costPerM2: 1000, costPerKg: 5, sustainability: "MEDIUM", isCustom: true
       });
       window.APP.render();
       window.APP.toast("Custom material added (user-provided — not a validated engineering value).");
+      const created = await window.APP_BACKEND.createMaterial({
+        slug: localId, // matches the local catalog id exactly, so adapter.js's slug->id lookup resolves this material after a refresh
+        category: cat, name: name,
+        densityKgM3: density, thermalConductivityWMk: k, specificHeatJKgK: cp,
+        solarAbsorptivity: 0.6, solarReflectivity: 0.4, emissivity: 0.9,
+        costEstimateInrPerUnit: 1000, sustainabilityIndicator: "MEDIUM"
+      }).catch(e => { window.APP.toast("Added locally, but saving it to the server failed: " + e.message); return null; });
+      if (created) {
+        const mat = DATA.MATERIALS.find(m => m.id === localId);
+        if (mat) mat.backendId = created.id;
+        await window.APP_ADAPTER.loadMaterialLookup(true); // refresh the slug/id cache so a save right after this can use it
+      }
     }, root);
   };
 
@@ -1564,7 +1793,7 @@ window.UI = window.UI || {};
       <div class="wizard-nav"><button class="btn" id="guidedBack">← Back</button><span></span></div>`;
 
     U.on("#guidedBack", "click", () => { guidedStep = 4; window.APP.render(); }, root);
-    U.on("#gRunBtn", "click", () => {
+    U.on("#gRunBtn", "click", async () => {
       const check = window.APP_VALIDATOR.validateDesign(s);
       if (!check.valid) {
         U.showValidationErrors(root, "#gValidationErrors", check.errors);
@@ -1573,25 +1802,24 @@ window.UI = window.UI || {};
       }
       U.showValidationErrors(root, "#gValidationErrors", []);
       const btn = U.qs("#gRunBtn", root);
+      const statusEl = U.qs("#gRunStatus", root);
       btn.disabled = true;
       btn.classList.add("is-loading");
-      U.qs("#gRunStatus", root).textContent = "Running thermal simulation and design optimization…";
-      setTimeout(() => {
-        try {
-          const result = ENGINE.runSimulation(s.design, season, s.simConfig);
-          STORE.recordSimulation(result);
-          const opt = ENGINE.runOptimization(s.design, season, s.simConfig, s.weights);
-          STORE.recordOptimization(opt);
-          guidedStep = 1; // reset wizard for next time
-          window.APP.navigate("evaluator");
-          window.APP.toast("Simulation and optimization complete.");
-        } catch (e) {
-          U.qs("#gRunStatus", root).textContent = "";
-          U.showValidationErrors(root, "#gValidationErrors", [{ field: null, message: "Simulation failed: " + e.message }]);
-          btn.disabled = false;
-          btn.classList.remove("is-loading");
-        }
-      }, 30);
+      const notify = (msg) => { if (statusEl) statusEl.textContent = msg; };
+      try {
+        const result = await window.APP_ADAPTER.runOfficialSimulation(s, notify);
+        STORE.recordSimulation(result);
+        const opt = await window.APP_ADAPTER.runOfficialOptimization(s, s.weights, false, notify);
+        STORE.recordOptimization(opt);
+        guidedStep = 1; // reset wizard for next time
+        window.APP.navigate("evaluator");
+        window.APP.toast("Simulation and optimization complete.");
+      } catch (e) {
+        if (statusEl) statusEl.textContent = "";
+        U.showValidationErrors(root, "#gValidationErrors", [{ field: null, message: "Simulation failed: " + e.message }]);
+        btn.disabled = false;
+        btn.classList.remove("is-loading");
+      }
     }, root);
   }
 })();

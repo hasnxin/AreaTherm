@@ -386,15 +386,56 @@ window.APP_ENGINE = (function () {
       return Math.max(0, f.areaM2 - openingsHere);
     });
 
-    const occ = computeOccupancyHeat(design);
+    // Occupancy: computeOccupancyHeat(design) is a pure function of
+    // design's occupancy/occupancyActivity fields, so when
+    // design.occupancySchedule (24 hour-indexed {persons,activityId}
+    // entries) is present, it's recomputed every hour INSIDE the loop
+    // below (see occupancyForHour()) so both occupant heat gain and
+    // occupancy-linked ventilation load vary hour by hour, not just heat
+    // gain. With no schedule this degenerates to calling it on the same
+    // unchanged design every iteration -- same inputs every time, so
+    // (floating point being deterministic) it reproduces exactly the same
+    // numbers as computing it once and reusing, verified by the existing
+    // golden fixtures.
+    function occupancyForHour(hourDecimal) {
+      const sched = design.occupancySchedule;
+      if (Array.isArray(sched) && sched.length === 24) {
+        const h = Math.floor(((hourDecimal % 24) + 24) % 24);
+        const entry = sched[h] || {};
+        return computeOccupancyHeat({ ...design, occupancy: entry.persons, occupancyActivity: entry.activityId });
+      }
+      return computeOccupancyHeat(design);
+    }
+    // Schedule-averaged summary, for the top-level `occupancy`/`ach`
+    // report fields ONLY -- the loop below always uses the real per-hour
+    // value (occupancyForHour) for the actual physics, never this.
+    const occSummary = (() => {
+      const sched = design.occupancySchedule;
+      if (Array.isArray(sched) && sched.length === 24) {
+        const perHour = sched.map(e => computeOccupancyHeat({ ...design, occupancy: e.persons, occupancyActivity: e.activityId }));
+        const avg = key => perHour.reduce((s, o) => s + o[key], 0) / perHour.length;
+        return {
+          persons: Math.max(...perHour.map(o => o.persons)), avgPersons: avg("persons"),
+          activity: { label: "Scheduled (varies by hour)" },
+          totalW: avg("totalW"), sensibleW: avg("sensibleW"), latentW: avg("latentW"),
+          equipmentW: perHour[0].equipmentW, latentKgPerHour: avg("latentKgPerHour"), scheduled: true
+        };
+      }
+      const flat = computeOccupancyHeat(design);
+      return Object.assign({}, flat, { avgPersons: flat.persons, scheduled: false });
+    })();
+
     const infiltrationAch = windAdjustedInfiltrationAch(design, season);
-    const occupancyAch = occupancyAchIncrement(occ.persons, geom.volume);
+    const occupancyAch = occupancyAchIncrement(occSummary.avgPersons, geom.volume); // reporting only -- see occSummary comment above
     const ach = infiltrationAch + occupancyAch;
     // Constant for the whole run (don't depend on the timestep) — hoisted
     // out of the hourly loop below rather than recomputed every iteration.
+    // Occupancy's own share of ventilation (occupancyVentUA/ventUA
+    // themselves) is NOT hoisted, unlike before -- both are now computed
+    // fresh inside the loop every hour, same as every other UA/ref term
+    // there, so an hour-varying schedule's ventilation load is exact
+    // rather than averaged.
     const infiltrationUA = ventUAFromAch(infiltrationAch, geom.volume);
-    const occupancyVentUA = ventUAFromAch(occupancyAch, geom.volume);
-    const ventUA = infiltrationUA + occupancyVentUA;
 
     const tm = design.thermalMass;
     let massActive = !!(tm && tm.massKg > 0);
@@ -466,7 +507,10 @@ window.APP_ENGINE = (function () {
       });
       const windowCondRef = windowCondUA * tAmb;
       const doorUA = 1.8 * doorArea, doorRef = doorUA * tAmb; // typical insulated door U~1.8 W/m2K, documented assumption
-      const ventRef = ventUA * tAmb; // ventUA (infiltration + occupancy) hoisted above the loop — constant for the run
+      const occ = occupancyForHour(hourDecimal);
+      const occupancyVentUA = ventUAFromAch(occupancyAchIncrement(occ.persons, geom.volume), geom.volume);
+      const ventUA = infiltrationUA + occupancyVentUA; // infiltration hoisted above the loop, occupancy's share is not — see occupancyForHour above
+      const ventRef = ventUA * tAmb;
       const qInternal = occ.totalSensibleW; // sensible-only: occupant sensible share + equipment gain
       const massUA = massActive ? massH * massArea : 0, massRef = massUA * tMass;
 
@@ -584,9 +628,9 @@ window.APP_ENGINE = (function () {
     const occupancyVentLossKwhPerDay = round2(agg.occupancyVentLossKwh / totalDays);
     const netOccupancyEffectKwh = round2(occupantSensibleKwhPerDay - occupancyVentLossKwhPerDay);
     let occupancyNote = null;
-    if (occ.persons > 0) {
+    if (occSummary.persons > 0) {
       occupancyNote = netOccupancyEffectKwh <= 0.05
-        ? `Ventilation increase from ${occ.persons} occupant(s) offsets most or all of their body-heat gain (net ${netOccupancyEffectKwh >= 0 ? "+" : ""}${netOccupancyEffectKwh} kWh/day) — a modelled trade-off, not an error.`
+        ? `Ventilation increase from ${occSummary.persons} occupant(s) offsets most or all of their body-heat gain (net ${netOccupancyEffectKwh >= 0 ? "+" : ""}${netOccupancyEffectKwh} kWh/day) — a modelled trade-off, not an error.`
         : `Occupants add more sensible heat than the occupancy-linked ventilation removes (net +${netOccupancyEffectKwh} kWh/day).`;
     }
 
@@ -595,9 +639,9 @@ window.APP_ENGINE = (function () {
       netWallArea, windowArea, doorArea, series,
       ach: { infiltration: round2(infiltrationAch), occupancy: round2(occupancyAch), total: round2(ach) },
       occupancy: {
-        persons: occ.persons, activityLabel: occ.activity.label, totalW: round2(occ.totalW),
-        sensibleW: round2(occ.sensibleW), latentW: round2(occ.latentW), equipmentW: round2(occ.equipmentW),
-        latentKgPerHour: Math.round(occ.latentKgPerHour * 1000) / 1000,
+        persons: occSummary.persons, activityLabel: occSummary.activity.label, totalW: round2(occSummary.totalW),
+        sensibleW: round2(occSummary.sensibleW), latentW: round2(occSummary.latentW), equipmentW: round2(occSummary.equipmentW),
+        latentKgPerHour: Math.round(occSummary.latentKgPerHour * 1000) / 1000, scheduled: occSummary.scheduled,
         sensibleKwhPerDay: occupantSensibleKwhPerDay, occupancyVentLossKwhPerDay,
         netOccupancyEffectKwh, note: occupancyNote
       },
@@ -652,6 +696,61 @@ window.APP_ENGINE = (function () {
     const WASTE_FACTOR = 0.10; // typical, documented assumption
     cost *= (1 + WASTE_FACTOR);
     return Math.round(cost);
+  }
+
+  // ---- Estimated cost breakdown (location-aware, INR) --------------------
+  // Same per-component costing as estimateCost() above -- added alongside
+  // it, not replacing it, so estimateCost's existing callers (including
+  // the optimizer's 3 call sites) are unaffected -- but broken into line
+  // items and adjusted by each material's real regional transport
+  // multiplier (DATA.materialAvailability, already computed from the
+  // site's remoteness; previously only ever displayed, never fed into a
+  // cost figure). Labor multiplier is a smaller heuristic scaling off that
+  // same remoteness signal -- like materialAvailability itself, a
+  // disclosed rule-based estimate, not sourced pricing data (see data.js's
+  // own disclaimer). With no location (or at zero remoteness), every
+  // multiplier is 1 and this returns the same total as estimateCost().
+  function estimateCostBreakdown(design, location) {
+    const geom = computeGeometry(design);
+    const wallMat = DATA.materialById(design.wall.materialId) || {};
+    const roofMat = DATA.materialById(design.roof.materialId) || {};
+    const insMat = design.wall.insulationMaterialId ? DATA.materialById(design.wall.insulationMaterialId) : null;
+
+    function multipliersFor(materialId) {
+      const avail = materialId ? DATA.materialAvailability(materialId, location) : null;
+      const transportMultiplier = avail ? avail.transportMultiplier : 1;
+      const laborMultiplier = Math.round((1 + (transportMultiplier - 1) * 0.5) * 100) / 100;
+      return { transportMultiplier, laborMultiplier };
+    }
+    function lineItem(label, materialId, baseCost) {
+      if (!(baseCost > 0)) return null;
+      const { transportMultiplier, laborMultiplier } = multipliersFor(materialId);
+      const rawTotal = baseCost * transportMultiplier * laborMultiplier;
+      return { label, baseCost: Math.round(baseCost), transportMultiplier, laborMultiplier, total: Math.round(rawTotal), rawTotal };
+    }
+
+    const items = [];
+    items.push(lineItem("Wall material", design.wall.materialId, (wallMat.costPerM2 || 1000) * geom.wallArea));
+    items.push(lineItem("Roof material", design.roof.materialId, (roofMat.costPerM2 || 1200) * geom.roofArea));
+    if (insMat) items.push(lineItem("Wall insulation", design.wall.insulationMaterialId, (insMat.costPerM2 || 500) * geom.wallArea * ((design.wall.insulationThicknessMm || 0) / 75)));
+    let glazingCost = 0, glazingMaterialId = null;
+    (design.windows || []).forEach(w => {
+      const g = DATA.materialById(w.glazingMaterialId) || {};
+      glazingCost += (g.costPerM2 || 2000) * (w.areaEach || 0) * (w.count || 0);
+      glazingMaterialId = glazingMaterialId || w.glazingMaterialId;
+    });
+    items.push(lineItem("Glazing", glazingMaterialId, glazingCost));
+    if (design.thermalMass && design.thermalMass.massKg) {
+      const m = DATA.materialById(design.thermalMass.materialId) || {};
+      items.push(lineItem("Thermal mass", design.thermalMass.materialId, (m.costPerKg || 5) * design.thermalMass.massKg));
+    }
+
+    const filtered = items.filter(Boolean);
+    const WASTE_FACTOR = 0.10;
+    const subtotal = filtered.reduce((sum, it) => sum + it.rawTotal, 0);
+    const total = Math.round(subtotal * (1 + WASTE_FACTOR));
+    filtered.forEach(it => { delete it.rawTotal; });
+    return { items: filtered, wasteFactor: WASTE_FACTOR, subtotal: Math.round(subtotal), total };
   }
 
   // ---- Optimization: candidate generation + scoring -----------------------
@@ -1078,14 +1177,108 @@ window.APP_ENGINE = (function () {
     return { mae: round2(mae), rmse: round2(rmse), mape: round2(mape), r2: r2 !== null ? Math.round(r2 * 1000) / 1000 : null, n };
   }
 
+  // ---- Annual / seasonal energy balance -----------------------------------
+  // Aggregates 4 representative-day simulations (one per meteorological
+  // season, built from the location's monthly climate normals) rather than
+  // a full 365-day hourly run -- for a steady-state passive-design
+  // comparison this is standard practice and far cheaper than a full year
+  // at this engine's 15-60 min resolution. Client-side/exploratory, same
+  // bucket as sensitivityAnalysis/recommendWindowLayout below -- not
+  // persisted as an "official" backend result, and runSimulation itself is
+  // untouched (called 4 times, not modified).
+  const SEASON_MONTH_IDX = { DJF: [11, 0, 1], MAM: [2, 3, 4], JJA: [5, 6, 7], SON: [8, 9, 10] };
+  const SEASON_MID_DOY = { DJF: 15, MAM: 105, JJA: 196, SON: 288 };
+  const SEASON_LABEL = { DJF: "Winter (Dec-Feb)", MAM: "Spring (Mar-May)", JJA: "Summer (Jun-Aug)", SON: "Autumn (Sep-Nov)" };
+
+  // Cooper (1969) solar declination + standard hour-angle sunrise/sunset --
+  // the same formula tools/generate-training-data.js already uses to build
+  // its own seasonal contexts from monthly data, for the same reason.
+  function dayLengthHours(latitude, dayOfYear) {
+    const decl = 23.45 * Math.sin((2 * Math.PI / 365) * (284 + dayOfYear));
+    const latRad = latitude * Math.PI / 180, declRad = decl * Math.PI / 180;
+    const cosH = -Math.tan(latRad) * Math.tan(declRad);
+    const clamped = Math.max(-1, Math.min(1, cosH));
+    const hourAngleDeg = Math.acos(clamped) * 180 / Math.PI;
+    return (2 * hourAngleDeg) / 15;
+  }
+
+  function avgOf(arr) {
+    const v = arr.filter(x => Number.isFinite(x));
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  }
+
+  // Builds 4 representative-day season objects from monthly climate
+  // normals. NASA POWER's climatology endpoint gives one mean temp per
+  // month (season.monthlyTemp, already merged by store.js) and monthly GHI
+  // (location.solarDataSource.monthlyGhi) but no monthly wind/humidity --
+  // those two stay fixed at the base season's values for all 4 seasons,
+  // which is honest (nothing to vary them with) rather than fabricated.
+  // Falls back entirely to the flat base season when no monthly data was
+  // ever fetched for this location (all 4 "seasons" then read identically).
+  function buildSeasonalContexts(location, season) {
+    const monthlyTemp = season.monthlyTemp;
+    const monthlyGhi = location && location.solarDataSource && location.solarDataSource.monthlyGhi;
+    const latitude = season.latitude;
+    const swing = (season.tMax - season.tMin) / 2;
+    return Object.keys(SEASON_MONTH_IDX).map(key => {
+      const idx = SEASON_MONTH_IDX[key];
+      const tMeanMonthly = Array.isArray(monthlyTemp) ? avgOf(idx.map(i => monthlyTemp[i] && monthlyTemp[i].tempC)) : null;
+      const tMean = tMeanMonthly != null ? tMeanMonthly : (season.tMin + season.tMax) / 2;
+      const ghiAvg = Array.isArray(monthlyGhi) ? avgOf(idx.map(i => monthlyGhi[i] && monthlyGhi[i].kwhM2Day)) : null;
+      const daylight = Number.isFinite(latitude) ? dayLengthHours(latitude, SEASON_MID_DOY[key]) : (season.sunset - season.sunrise);
+      return {
+        label: SEASON_LABEL[key], seasonKey: key, latitude,
+        tMin: tMean - swing, tMax: tMean + swing,
+        solarKwhDay: ghiAvg != null ? ghiAvg : season.solarKwhDay,
+        sunrise: 12 - daylight / 2, sunset: 12 + daylight / 2,
+        windMs: season.windMs, rhPct: season.rhPct, cloudPct: season.cloudPct,
+        avgTempCAnnual: season.avgTempCAnnual, monthlyTemp: season.monthlyTemp
+      };
+    });
+  }
+
+  // Runs runSimulation once per representative season and aggregates into
+  // an annual energy balance. runSimulation's `daily`/`comfort`/`scores`
+  // figures are already per-simulated-day averages regardless of
+  // simConfig.days, so each season's share of the year (365/4 days) is
+  // applied once here, not per input day.
+  function runAnnualSimulation(design, location, season, simConfig) {
+    const DAYS_PER_SEASON = 365 / 4;
+    const seasons = buildSeasonalContexts(location, season).map(ctx => {
+      const result = runSimulation(design, ctx, simConfig);
+      return {
+        seasonKey: ctx.seasonKey, label: ctx.label,
+        avgIndoorC: result.comfort.avgIndoor, minIndoorC: result.comfort.minIndoor, maxIndoorC: result.comfort.maxIndoor,
+        comfortHoursPerDay: result.comfort.comfortHoursPerDay, inBandPct: result.comfort.inBandPct,
+        heatingReqKwhPerDay: result.daily.heatingReqKwh, coolingReqKwhPerDay: result.daily.coolingReqKwh,
+        solarUtilizationPct: result.scores.solarUtilizationPct, thermalComfortScore: result.scores.thermalComfortScore,
+        result
+      };
+    });
+    const sumOverYear = key => seasons.reduce((sum, s) => sum + (s[key] || 0) * DAYS_PER_SEASON, 0);
+    const avgAcrossSeasons = key => seasons.reduce((sum, s) => sum + (s[key] || 0), 0) / seasons.length;
+    return {
+      seasons,
+      annual: {
+        totalHeatingKwh: round2(sumOverYear("heatingReqKwhPerDay")),
+        totalCoolingKwh: round2(sumOverYear("coolingReqKwhPerDay")),
+        avgComfortHoursPerDay: round2(avgAcrossSeasons("comfortHoursPerDay")),
+        avgInBandPct: round2(avgAcrossSeasons("inBandPct")),
+        avgSolarUtilizationPct: round2(avgAcrossSeasons("solarUtilizationPct")),
+        avgThermalComfortScore: round2(avgAcrossSeasons("thermalComfortScore"))
+      }
+    };
+  }
+
   return {
     computeGeometry, wallUValue, roofUValue, floorUValue, windowUValue,
-    ambientTempAt, solarIrradianceAt, windSpeedAt, runSimulation, estimateCost,
+    ambientTempAt, solarIrradianceAt, windSpeedAt, runSimulation, estimateCost, estimateCostBreakdown,
     computeOccupancyHeat, occupancyAchIncrement,
     windAdjustedInfiltrationAch, ventUAFromAch,
     windAdjustedFilmCoefficient, estimateGroundTempC, massFilmCoefficient,
     generateCandidates, scoreCandidate, runOptimization, sensitivityAnalysis, recommendWindowLayout,
     validationStats, validateDesign, validateCoordinates,
-    orientationFactorFromAngle, faceFactor, frontAzimuthOf, orientationFactorTableForLatitude
+    orientationFactorFromAngle, faceFactor, frontAzimuthOf, orientationFactorTableForLatitude,
+    runAnnualSimulation
   };
 })();

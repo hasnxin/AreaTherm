@@ -228,14 +228,16 @@ window.UI = window.UI || {};
     const shapeDimensions = U.shapeDimensionsText(s.design);
 
     root.innerHTML = `
-      ${U.pageHeader("📄", "Reports", "Printable / exportable to PDF via your browser's print dialog — works fully offline, no external library required.")}
+      ${U.pageHeader("📄", "Reports", "Printable via your browser's print dialog (this page, works fully offline), or a server-generated PDF from your last official simulation/optimization run.")}
       <div class="card" style="margin-bottom:14px; display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn" id="climateCardBtn">📄 Climate Profile Card</button>
           <button class="btn" id="materialCompBtn">📄 Material Comparison Sheet</button>
           <button class="btn btn-sm" id="exportMaterialsBtn">⬇ Material Sheet (CSV)</button>
-          <button class="btn btn-accent" id="printBtn">🖨 Print / Save as PDF</button>
+          <button class="btn" id="printBtn">🖨 Print / Save as PDF (this page)</button>
+          <button class="btn btn-accent" id="downloadReportBtn">⬇ Download Server PDF Report</button>
         </div>
+        <div id="downloadReportStatus" class="hint"></div>
       </div>
       <div class="card" id="reportDoc" style="line-height:1.7;">
         <h1 style="text-align:center;">Area-Specific Passive Shelter Thermal Performance &amp; Design Optimization Report</h1>
@@ -338,6 +340,38 @@ window.UI = window.UI || {};
       </div>`;
 
     U.on("#printBtn", "click", () => window.print(), root);
+    U.on("#downloadReportBtn", "click", async () => {
+      const st = STORE.get();
+      const statusEl = U.qs("#downloadReportStatus", root);
+      const btn = U.qs("#downloadReportBtn", root);
+      if (!st.backend.lastSimulationId && !st.backend.lastOptimizationRunId) {
+        statusEl.classList.add("status-error");
+        statusEl.textContent = "Run a Thermal Simulation or Optimization first — the server report is built from an official run, not the on-screen preview above.";
+        return;
+      }
+      statusEl.classList.remove("status-error");
+      statusEl.textContent = "Generating PDF on the server…";
+      btn.disabled = true;
+      btn.classList.add("is-loading");
+      try {
+        const projectId = await window.APP_ADAPTER.ensureProject(st);
+        const created = await window.APP_BACKEND.createReport({
+          projectId: projectId,
+          simulationId: st.backend.lastSimulationId,
+          optimizationRunId: st.backend.lastOptimizationRunId
+        });
+        statusEl.textContent = "Downloading…";
+        await window.APP_BACKEND.downloadReportFile(created.id, "areatherm-report-" + created.id + ".pdf");
+        statusEl.textContent = "Report downloaded.";
+        window.APP.toast("Server PDF report downloaded.");
+      } catch (e) {
+        statusEl.classList.add("status-error");
+        statusEl.textContent = "Could not generate the report: " + e.message;
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove("is-loading");
+      }
+    }, root);
     U.on("#climateCardBtn", "click", () => window.APP.navigate("climate-card"), root);
     U.on("#materialCompBtn", "click", () => window.APP.navigate("material-comparison"), root);
     U.on("#exportMaterialsBtn", "click", () => {
@@ -585,7 +619,6 @@ window.UI = window.UI || {};
 
   UI.renderSettings = function (root) {
     const s = STORE.get();
-    const projects = STORE.listProjects();
     loadStorageEstimateOnce();
     root.innerHTML = `
       ${U.pageHeader("⚙️", "Settings", "Appearance, units, model assumptions, and saved projects.")}
@@ -724,12 +757,33 @@ window.UI = window.UI || {};
       </div>
       <div class="card" style="margin-top:16px;">
         <h3>Saved Projects</h3>
-        <p class="subtitle">Keep more than one named design and switch between them — the current one auto-saves into its own slot as you work.</p>
+        <p class="subtitle">Saved to your AreaTherm account — available from any device you sign in on.</p>
         <div class="form-inline">
           <div class="form-row" style="flex:2;"><label>New project name</label><input id="newProjName" placeholder="e.g. Kargil winter shelter"></div>
           <div class="form-row" style="align-self:flex-end;"><button class="btn btn-accent btn-sm" id="newProjectBtn">＋ New Project</button></div>
         </div>
-        ${projects.length ? `<div class="table-wrap"><table>
+        <div id="savedProjectsTable">${U.emptyState("⏳", "Loading your saved projects…")}</div>
+        <p class="hint status-error" id="newProjError" style="margin-top:6px;" hidden></p>
+        <button class="btn btn-sm" id="saveCurrentAsProjectBtn" style="margin-top:10px;">Save current design to this list</button>
+      </div>
+    `;
+
+    // listProjects() is a real network call now (backend-persisted — see
+    // store.js), so renderSettings (which must stay synchronous like every
+    // other route renderer) shows the placeholder above immediately and
+    // patches in the real table once this resolves, same pattern as
+    // ui-1.js's async location-load handlers.
+    async function refreshSavedProjects() {
+      const container = U.qs("#savedProjectsTable", root);
+      if (!container) return; // navigated away before this resolved
+      let projects;
+      try {
+        projects = await STORE.listProjects();
+      } catch (e) {
+        container.innerHTML = `<p class="hint status-error">Could not load saved projects: ${U.esc(e.message)}</p>`;
+        return;
+      }
+      container.innerHTML = projects.length ? `<div class="table-wrap"><table>
           <tr><th>Name</th><th>Last saved</th><th></th></tr>
           ${projects.map(p => `<tr class="${p.isCurrent ? "highlight-recommended" : ""}">
             <td>${U.esc(p.name)}${p.isCurrent ? ' <span class="tag tag-input">current</span>' : ""}</td>
@@ -739,11 +793,39 @@ window.UI = window.UI || {};
               <button class="btn btn-sm" style="color:var(--bad);margin-left:6px;" data-delete-proj="${p.id}">Delete</button>
             </td>
           </tr>`).join("")}
-        </table></div>` : U.emptyState("🗂️", `No saved projects yet — click "New Project" or save the current one below to start a list.`)}
-        <p class="hint status-error" id="newProjError" style="margin-top:6px;" hidden></p>
-        <button class="btn btn-sm" id="saveCurrentAsProjectBtn" style="margin-top:10px;">Save current design to this list</button>
-      </div>
-    `;
+        </table></div>` : U.emptyState("🗂️", `No saved projects yet — click "New Project" or save the current one below to start a list.`);
+
+      U.qsa("[data-load-proj]", container).forEach(btn => btn.addEventListener("click", async () => {
+        const id = btn.dataset.loadProj;
+        const proj = projects.find(p => p.id === id);
+        if (proj && !confirm(`Switch to "${proj.name}"? Your current design is already saved and won't be lost.`)) return;
+        btn.disabled = true;
+        try {
+          const ok = await STORE.loadProject(id);
+          window.APP.applyTheme();
+          window.APP.render();
+          window.APP.toast(ok ? `Loaded "${proj ? proj.name : "project"}".` : "Could not load that project.");
+        } catch (e) {
+          btn.disabled = false;
+          window.APP.toast("Could not load that project: " + e.message);
+        }
+      }));
+      U.qsa("[data-delete-proj]", container).forEach(btn => btn.addEventListener("click", async () => {
+        const id = btn.dataset.deleteProj;
+        const proj = projects.find(p => p.id === id);
+        if (!confirm(`Delete the saved project "${proj ? proj.name : ""}"? This only removes it from your saved list — it won't affect your current work.`)) return;
+        btn.disabled = true;
+        try {
+          await STORE.deleteProject(id);
+          window.APP.toast("Project deleted.");
+          refreshSavedProjects();
+        } catch (e) {
+          btn.disabled = false;
+          window.APP.toast("Could not delete: " + e.message);
+        }
+      }));
+    }
+    refreshSavedProjects();
     U.on("#themeLight", "click", () => { STORE.setTheme("LIGHT"); window.APP.applyTheme(); window.APP.render(); }, root);
     U.on("#themeDark", "click", () => { STORE.setTheme("DARK"); window.APP.applyTheme(); window.APP.render(); }, root);
     U.on("#unitsMetricBtn", "click", () => { s.units = "METRIC"; STORE.save(); window.APP.render(); }, root);
@@ -765,31 +847,22 @@ window.UI = window.UI || {};
       const nameErr = U.qs("#newProjError", root);
       if (!name) { if (nameErr) { nameErr.hidden = false; nameErr.textContent = "Enter a name for the new project."; } return; }
       if (nameErr) nameErr.hidden = true;
-      await STORE.newProject(name);
-      window.APP.render();
-      window.APP.toast(`New project "${name}" created and set as current.`);
+      try {
+        await STORE.newProject(name);
+        window.APP.render();
+        window.APP.toast(`New project "${name}" created and set as current.`);
+      } catch (e) {
+        if (nameErr) { nameErr.hidden = false; nameErr.textContent = "Could not create project: " + e.message; }
+      }
     }, root);
     U.on("#saveCurrentAsProjectBtn", "click", async () => {
-      await STORE.saveAsProject(s.project.name);
-      window.APP.render();
-      window.APP.toast(`"${s.project.name}" saved to your projects list.`);
+      try {
+        await STORE.saveAsProject(s.project.name);
+        window.APP.render();
+        window.APP.toast(`"${s.project.name}" saved to your projects list.`);
+      } catch (e) {
+        window.APP.toast("Could not save: " + e.message);
+      }
     }, root);
-    U.qsa("[data-load-proj]", root).forEach(btn => btn.addEventListener("click", async () => {
-      const id = btn.dataset.loadProj;
-      const proj = projects.find(p => p.id === id);
-      if (proj && !confirm(`Switch to "${proj.name}"? Your current design is already saved and won't be lost.`)) return;
-      await STORE.loadProject(id);
-      window.APP.applyTheme();
-      window.APP.render();
-      window.APP.toast(`Loaded "${proj ? proj.name : "project"}".`);
-    }));
-    U.qsa("[data-delete-proj]", root).forEach(btn => btn.addEventListener("click", async () => {
-      const id = btn.dataset.deleteProj;
-      const proj = projects.find(p => p.id === id);
-      if (!confirm(`Delete the saved project "${proj ? proj.name : ""}"? This only removes it from your saved list — it won't affect your current work.`)) return;
-      await STORE.deleteProject(id);
-      window.APP.render();
-      window.APP.toast("Project deleted.");
-    }));
   };
 })();

@@ -4,6 +4,11 @@ window.UI = window.UI || {};
 (function () {
   const DATA = window.APP_DATA, ENGINE = window.APP_ENGINE, STORE = window.APP_STORE, CH = window.APP_CHARTS, CFG = window.APP_CONFIG;
 
+  // Annual/seasonal energy balance result — local exploratory state only
+  // (like sensitivityAnalysis below, never sent to the backend), so it
+  // survives re-renders of the Simulation screen but resets on reload.
+  let lastAnnualResult = null;
+
   function matName(id) { const m = DATA.materialById(id); return m ? m.name : id || "—"; }
 
   function noClimateCard() {
@@ -238,6 +243,7 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
           </div>
           <div class="form-row" style="align-self:flex-end;"><button class="btn btn-accent" id="runSimBtn">▶ Run Thermal Simulation</button></div>
         </div>
+        <div id="simRunStatus" class="hint"></div>
         <div id="simValidationErrors" hidden></div>
       </div>
 
@@ -323,6 +329,31 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
         <p class="hint" style="margin-top:10px;"><b>Recommendation:</b> ${simRecommendation(result, s.design)}</p>
       </div>
       ` : `<div class="card"><p class="subtitle">Run the simulation to see predicted indoor temperature, solar gain, heat losses, and comfort duration.</p></div>`}
+
+      <div class="section-label" style="margin-top:8px;">Annual / Seasonal Energy Balance</div>
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <div>
+            <h3>Annual Energy Balance <span class="tag tag-model">4 representative-season estimate</span></h3>
+            <p class="hint">Runs this same physics-based simulation once per meteorological season (winter/spring/summer/autumn), built from this location's monthly climate normals, and aggregates into a seasonal/annual picture. An exploratory estimate alongside the single run above, not a separate official result.</p>
+          </div>
+          <button class="btn btn-accent btn-sm" id="runAnnualBtn" style="white-space:nowrap;">▶ Run Annual Analysis</button>
+        </div>
+        ${lastAnnualResult ? `
+        <div class="grid grid-4" style="margin:16px 0;">
+          <div class="metric-card"><div class="metric-label">Total Heating Demand</div><div class="metric-value" style="font-size:18px;">${lastAnnualResult.annual.totalHeatingKwh}</div><div class="metric-sub">kWh/year</div></div>
+          <div class="metric-card"><div class="metric-label">Total Cooling Demand</div><div class="metric-value" style="font-size:18px;">${lastAnnualResult.annual.totalCoolingKwh}</div><div class="metric-sub">kWh/year</div></div>
+          <div class="metric-card"><div class="metric-label">Avg Comfort Duration</div><div class="metric-value" style="font-size:18px;">${lastAnnualResult.annual.avgComfortHoursPerDay}</div><div class="metric-sub">h/day, year-round avg</div></div>
+          <div class="metric-card"><div class="metric-label">Avg Thermal Comfort Score</div><div class="metric-value" style="font-size:18px;">${lastAnnualResult.annual.avgThermalComfortScore}</div><div class="metric-sub">year-round avg</div></div>
+        </div>
+        <table style="margin-bottom:12px;">
+          <tr><th>Season</th><th class="num">Indoor range (°C)</th><th class="num">Comfort (h/day)</th><th class="num">Heating (kWh/day)</th><th class="num">Cooling (kWh/day)</th><th class="num">Solar util.</th></tr>
+          ${lastAnnualResult.seasons.map(sr => `<tr><td>${U.esc(sr.label)}</td><td class="num">${sr.minIndoorC} – ${sr.maxIndoorC}</td><td class="num">${sr.comfortHoursPerDay}</td><td class="num">${sr.heatingReqKwhPerDay}</td><td class="num">${sr.coolingReqKwhPerDay}</td><td class="num">${sr.solarUtilizationPct}%</td></tr>`).join("")}
+        </table>
+        <h3>Comfort Duration by Season</h3>
+        <div id="annualSeasonChart"></div>
+        ` : `<p class="subtitle" style="margin-top:10px;">Run the annual analysis to see a seasonal breakdown of heating/cooling demand and comfort across the year.</p>`}
+      </div>
     `;
 
     if (result) {
@@ -336,11 +367,32 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
       CH.stackedHourlyChart(U.qs("#stackedHeatFlow", root), buildHourlyBuckets(result.series), { yLabel: "W" });
       CH.stackedHeatBalanceChart(U.qs("#heatFlowDiv", root), result.daily);
       CH.scoreGauge(U.qs("#simGauge", root), result.scores.thermalComfortScore);
-      wireExplainButtons(root, result, s.design, season);
+      // Explain Calculation needs per-step fields the backend doesn't
+      // persist (raw solar irradiance, separate window/door conduction) —
+      // recomputed locally once on the exact inputs that produced this
+      // official result (same verified engine, not a competing answer),
+      // purely so the modal's narration has the richer detail to read.
+      wireExplainButtons(root, window.APP_ADAPTER.explainLocalRecompute(s) || result, s.design, season);
       U.on("#downloadTempChartBtn", "click", () => CH.downloadChartPng(U.qs("#tempChart", root), "areatherm_temperature_chart.png"), root);
     }
 
-    U.on("#runSimBtn", "click", () => {
+    if (lastAnnualResult) {
+      CH.barChart(U.qs("#annualSeasonChart", root), lastAnnualResult.seasons.map(sr => ({ label: sr.label, value: sr.comfortHoursPerDay })), { labelWidth: 140 });
+    }
+
+    U.on("#runAnnualBtn", "click", () => {
+      const check = window.APP_VALIDATOR.validateDesign(STORE.get());
+      if (!check.valid) {
+        window.APP.toast("Fix the design issues listed below before running.");
+        return;
+      }
+      const st = STORE.get();
+      lastAnnualResult = ENGINE.runAnnualSimulation(st.design, st.location, season, st.simConfig);
+      window.APP.render();
+      window.APP.toast("Annual analysis complete.");
+    }, root);
+
+    U.on("#runSimBtn", "click", async () => {
       const check = window.APP_VALIDATOR.validateDesign(STORE.get());
       if (!check.valid) {
         U.showValidationErrors(root, "#simValidationErrors", check.errors);
@@ -352,13 +404,20 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
       const periodType = U.qs("#simPeriod", root).value;
       const days = periodType === "24H" ? 1 : periodType === "7D" ? 7 : 30;
       STORE.get().simConfig = { timeStepMinutes, periodType, days };
+      const btn = U.qs("#runSimBtn", root);
+      const statusEl = U.qs("#simRunStatus", root);
+      btn.disabled = true;
+      btn.classList.add("is-loading");
       try {
-        const res = ENGINE.runSimulation(STORE.get().design, season, STORE.get().simConfig);
+        const res = await window.APP_ADAPTER.runOfficialSimulation(STORE.get(), (msg) => { if (statusEl) statusEl.textContent = msg; });
         STORE.recordSimulation(res);
         window.APP.render();
         window.APP.toast("Simulation complete.");
       } catch (e) {
+        if (statusEl) statusEl.textContent = "";
         U.showValidationErrors(root, "#simValidationErrors", [{ field: null, message: "Simulation failed: " + e.message }]);
+        btn.disabled = false;
+        btn.classList.remove("is-loading");
       }
     }, root);
   };
@@ -410,6 +469,7 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
     if (!season) { root.innerHTML = U.pageHeader("📊", "Design Optimization", "") + noClimateCard(); return; }
     const w = s.weights;
     const opt = s.lastOptimizationResult;
+    const costBreakdown = opt ? ENGINE.estimateCostBreakdown(opt.recommended.design, s.location) : null;
 
     const weightRow = (key, label) => `
       <div class="form-row"><label>${label} (${Math.round(w[key]*100)}%)</label>
@@ -430,14 +490,13 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
         <div id="weightTotal" class="hint"></div>
         <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
           <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; cursor:pointer;">
-            <input type="checkbox" id="broaderSearchToggle" style="width:auto;" ${window.APP_ML && window.APP_ML.isAvailable() ? "checked" : "disabled"}>
+            <input type="checkbox" id="broaderSearchToggle" style="width:auto;" disabled>
             Broader search (ML-screened)
           </label>
-          <p class="hint" style="margin:4px 0 0 24px;">${window.APP_ML && window.APP_ML.isAvailable()
-            ? "Screens ~10,000 combinations with a fast ML surrogate first, then verifies the best 400 with the real physics engine — every shown result is still a real simulation. Untick to use the pure-physics grid only."
-            : "ML surrogate model not loaded — using the pure-physics grid search."}</p>
+          <p class="hint" style="margin:4px 0 0 24px;">Optimization now runs on the server, which evaluates the full deterministic physics grid (567 candidates) — no ML surrogate is wired up there yet (infrastructure-only stub, see backend/README.md), so this option is unavailable for now.</p>
         </div>
         <button class="btn btn-accent" id="runOptBtn" style="margin-top:10px;">▶ Run Design Optimization</button>
+        <div id="optRunStatus" class="hint"></div>
         <div id="optValidationErrors" hidden></div>
       </div>
 
@@ -479,6 +538,21 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
           <div class="recommend-item"><div class="k">Thermal performance score</div><div class="v">${opt.recommended.score.total.toFixed(0)}/100</div></div>
         </div>
         <p class="hint" style="margin-top:10px;">Estimated cost: ₹${opt.recommended.cost.toLocaleString("en-IN")} (materials-only planning estimate, not a CPWD/PWD SOR figure — verify with local quotations).</p>
+        ${costBreakdown && s.location ? `
+        <h3 style="margin-top:14px;">Cost Breakdown <span class="tag tag-demo">rule-based estimate</span></h3>
+        <div class="table-wrap"><table>
+          <tr><th>Item</th><th class="num">Base cost</th><th class="num">Transport ×</th><th class="num">Labor ×</th><th class="num">Total</th></tr>
+          ${costBreakdown.items.map(it => `<tr>
+            <td>${U.esc(it.label)}</td>
+            <td class="num">₹${it.baseCost.toLocaleString("en-IN")}</td>
+            <td class="num">${it.transportMultiplier}×</td>
+            <td class="num">${it.laborMultiplier}×</td>
+            <td class="num">₹${it.total.toLocaleString("en-IN")}</td>
+          </tr>`).join("")}
+          <tr style="font-weight:700;"><td colspan="4">+ ${Math.round(costBreakdown.wasteFactor * 100)}% waste factor</td><td class="num">₹${costBreakdown.total.toLocaleString("en-IN")}</td></tr>
+        </table></div>
+        <p class="hint" style="margin-top:6px;">Transport/labor multipliers come from this site's elevation/remoteness — same rule-based basis as Regional Material Availability below, not sourced pricing data.</p>
+        ` : ""}
         ${s.location ? `
         <h3 style="margin-top:14px;">Regional Material Availability <span class="tag tag-demo">rule-based estimate</span></h3>
         <div class="table-wrap"><table>
@@ -591,7 +665,7 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
       }, root);
     }
 
-    U.on("#runOptBtn", "click", () => {
+    U.on("#runOptBtn", "click", async () => {
       const check = window.APP_VALIDATOR.validateDesign(s);
       if (!check.valid) {
         U.showValidationErrors(root, "#optValidationErrors", check.errors);
@@ -602,23 +676,21 @@ Thermal Comfort Score = ${sc.thermalComfortScore} / 100</pre>
       const nw = normalizedWeights(w);
       s.weights = nw;
       const btn = U.qs("#runOptBtn", root);
+      const statusEl = U.qs("#optRunStatus", root);
       btn.disabled = true;
       btn.classList.add("is-loading");
       const broaderSearch = !!(U.qs("#broaderSearchToggle", root) && U.qs("#broaderSearchToggle", root).checked);
-      setTimeout(() => {
-        try {
-          const result = ENGINE.runOptimization(s.design, season, s.simConfig, nw, { broaderSearch });
-          STORE.recordOptimization(result);
-          window.APP.render();
-          window.APP.toast(result.usedMlScreening
-            ? `Optimization complete — ${result.mlScreenedFrom.toLocaleString("en-IN")} ML-screened, ${result.candidatesEvaluated} verified by real simulation.`
-            : `Optimization complete — ${result.candidatesEvaluated} candidates evaluated.`);
-        } catch (e) {
-          U.showValidationErrors(root, "#optValidationErrors", [{ field: null, message: "Optimization failed: " + e.message }]);
-          btn.disabled = false;
-          btn.classList.remove("is-loading");
-        }
-      }, 30);
+      try {
+        const result = await window.APP_ADAPTER.runOfficialOptimization(STORE.get(), nw, broaderSearch, (msg) => { if (statusEl) statusEl.textContent = msg; });
+        STORE.recordOptimization(result);
+        window.APP.render();
+        window.APP.toast(`Optimization complete — ${result.candidatesEvaluated} candidates evaluated.`);
+      } catch (e) {
+        if (statusEl) statusEl.textContent = "";
+        U.showValidationErrors(root, "#optValidationErrors", [{ field: null, message: "Optimization failed: " + e.message }]);
+        btn.disabled = false;
+        btn.classList.remove("is-loading");
+      }
     }, root);
   };
 

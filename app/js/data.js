@@ -156,6 +156,23 @@ window.APP_DATA = (function () {
     return Math.min(shifted, max - 1);
   }
 
+  // Suggests a starting comfort band from latitude + occupancy density — a
+  // rule-based prefill the user can (and should) still adjust, not a
+  // computed optimum. Colder/high-latitude sites get a slightly relaxed
+  // (lower) minimum target, since a passive shelter in extreme cold can't
+  // always reach the same minimum as a temperate one without active
+  // heating; denser occupancy nudges it back up slightly since more
+  // occupants means more free metabolic heat already offsetting the low
+  // end (see ACTIVITY_LEVELS below for that separate, watts-based effect).
+  function suggestComfortBand(latitude, occupancyCount) {
+    const latAbs = Number.isFinite(latitude) ? Math.abs(latitude) : 28;
+    const t = Math.max(0, Math.min(1, (latAbs - 20) / (34 - 20)));
+    let baseMin = 16 - t * 2; // 16°C at low latitude down to 14°C at high latitude (e.g. Leh)
+    const occ = Math.max(0, occupancyCount || 0);
+    baseMin += Math.min(2, occ * 0.3);
+    return { baseMin: Math.round(baseMin), max: 27 };
+  }
+
   // ---- Occupancy activity levels -----------------------------------------
   // "watts" is the TOTAL (sensible + latent) heat output per person — the
   // order of magnitude documented in the ASHRAE Fundamentals Handbook, Ch. 9
@@ -173,6 +190,37 @@ window.APP_DATA = (function () {
     { id: "MODERATE", label: "Moderate activity", watts: 240, sensibleFrac: 0.55 },
     { id: "HEAVY", label: "Heavy activity", watts: 360, sensibleFrac: 0.45 }
   ];
+
+  // Optional hour-indexed alternative to a flat occupancy count, for
+  // shelters whose real occupancy pattern varies through the day rather
+  // than holding one constant headcount for the whole run — each preset
+  // is a 24-entry array (index = hour of day, 0-23), one
+  // {persons, activityId} pair per hour. "CUSTOM" isn't a fixed preset
+  // here; the UI seeds it from the design's current flat occupancy
+  // repeated across all 24 hours, then lets the user edit individual
+  // hours from there.
+  function buildSchedule(entries) {
+    // entries: [[startHour, endHourExclusive, persons, activityId], ...]
+    // covering all 24 hours with no gaps -- asserted, not silently
+    // tolerated, since a gap would leave an undefined hour in the schedule.
+    const sched = new Array(24).fill(null);
+    entries.forEach(([start, end, persons, activityId]) => {
+      for (let h = start; h < end; h++) sched[h] = { persons, activityId };
+    });
+    if (sched.some(e => e == null)) throw new Error("buildSchedule: entries must cover all 24 hours with no gaps");
+    return sched;
+  }
+  const OCCUPANCY_SCHEDULES = [
+    { id: "EMPTY", label: "Unoccupied", description: "No one present — e.g. a cached/storage shelter or one being evaluated before occupancy is assigned.",
+      schedule: buildSchedule([[0, 24, 0, "SEATED"]]) },
+    { id: "OBSERVATION_POST", label: "Observation post", description: "Manned around the clock — 2 on watch through the day, dropping to 1 (resting nearby) overnight.",
+      schedule: buildSchedule([[0, 6, 1, "SLEEPING"], [6, 22, 2, "SEATED"], [22, 24, 1, "SLEEPING"]]) },
+    { id: "MILITARY_BARRACKS", label: "Military barracks", description: "Most personnel out on duty/training during the day; full strength returns to sleep overnight, plus a small day-duty staff.",
+      schedule: buildSchedule([[0, 6, 10, "SLEEPING"], [6, 22, 2, "SEATED"], [22, 24, 10, "SLEEPING"]]) },
+    { id: "DISASTER_RELIEF", label: "Disaster relief shelter", description: "Displaced occupants present most of the day, at full strength overnight — unlike a barracks, people mostly don't leave for duty elsewhere.",
+      schedule: buildSchedule([[0, 6, 8, "SLEEPING"], [6, 22, 6, "LIGHT"], [22, 24, 8, "SLEEPING"]]) }
+  ];
+  function occupancyScheduleById(id) { return OCCUPANCY_SCHEDULES.find(s => s.id === id); }
 
   function materialsByCategory(cat) {
     return MATERIALS.filter(m => m.category === cat);
@@ -206,6 +254,7 @@ window.APP_DATA = (function () {
     CLOTHING_LEVELS, COMFORT_ACTIVITY_LEVELS, ACTIVITY_LEVELS, HUMIDITY_COMFORT_BAND,
     materialsByCategory, materialById, predefinedLocationById, nearestPredefinedLocation,
     clothingLevelById, comfortActivityLevelById, activityLevelById, effectiveComfortMin,
-    materialAvailability
+    materialAvailability, suggestComfortBand,
+    OCCUPANCY_SCHEDULES, occupancyScheduleById
   };
 })();

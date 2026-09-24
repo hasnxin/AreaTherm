@@ -1,23 +1,36 @@
-# AreaTherm — Target REST API (production backend)
+# AreaTherm — REST API (production backend)
 
-Not implemented in this pass (no backend runtime in this environment — see
-ARCHITECTURE.md §0). The prototype calls the equivalent logic directly as
-JS functions (`app/js/engine.js`, `app/js/store.js`). This is the contract
-a Spring Boot backend should expose so the same frontend calls map 1:1.
+Implemented at [`backend/`](backend/) and wired to the frontend — see
+[`backend/README.md`](backend/README.md) for what's actually live vs. still
+a documented target. A few endpoints below (marked inline) were part of the
+original target contract but were never built, because nothing in the
+frontend ended up needing them as a separate route (`/geometry` is returned
+inline as part of a simulation result; `/explain` and What-If are computed
+entirely client-side; validation datasets stay device-local). Where the
+built contract differs from what's documented here, the real controller
+source under `backend/src/main/java/com/areatherm/api/` is authoritative —
+this file describes intent, not a byte-exact wire trace.
 
 Base path: `/api/v1`. Auth: `Authorization: Bearer <JWT>`. All bodies JSON.
+
+## Projects
+Not in the brief's own entity list, but every resource below is scoped by
+`project_id`, so this exists as the necessary root:
+- `GET /projects` — the caller's own projects only (owner derived from the JWT)
+- `GET/DELETE /projects/{id}` — DELETE 409s if the project still has locations or shelter designs
+- `POST /projects` — `{name, description?}`
 
 ## Locations & Climate
 - `GET /locations` — list saved locations for the current project
 - `POST /locations` — create a location `{country, state, district, village, latitude, longitude, elevationM}`
 - `GET /locations/{id}/climate-profiles` — list climate profiles for a location
-- `GET /climate-profiles/live?locationId=` — fetch/refresh a location's live Open-Meteo weather + NASA POWER climatology, cached server-side (5-7 day TTL)
+- `GET /climate-profiles/live?locationId=` — **not implemented**; live climate fetching stays entirely client-side (`app/js/weather-api.js`/`nasa-power.js`), the backend only ever receives an already-fetched profile via POST below
 - `POST /climate-profiles` — create a user-provided climate profile (+ hourly series)
 
 ## Shelter Design
-- `GET/POST /projects/{id}/shelter-designs`
-- `GET/PUT/DELETE /shelter-designs/{id}` — geometry, orientation, wall/roof/floor, openings, thermal mass, comfort profile
-- `GET /shelter-designs/{id}/geometry` — server-computed floor area, volume, wall/roof area (mirrors `engine.computeGeometry`)
+- `GET/POST /projects/{id}/shelter-designs` — GET returns a lightweight `{id,name,shape}` list; POST takes the full geometry/materials/openings/thermal-mass/comfort-profile payload
+- `GET/PUT /shelter-designs/{id}` — full detail (geometry, orientation, wall/roof/floor, openings, thermal mass); no DELETE exists
+- `GET /shelter-designs/{id}/geometry` — **not implemented** as its own route; geometry is returned inline as part of a simulation's `summary.geometry`
 
 ## Materials
 - `GET /materials?category=WALL|ROOF|INSULATION|THERMAL_MASS|WINDOW`
@@ -29,22 +42,21 @@ Base path: `/api/v1`. Auth: `Authorization: Bearer <JWT>`. All bodies JSON.
 - `POST /comfort-profiles`
 
 ## Simulation
-- `POST /simulations` — `{shelterDesignId, climateProfileId, timeStepMinutes, periodType, startAt, endAt}` → `202 Accepted` + simulation id (status QUEUED/RUNNING/COMPLETE)
-- `GET /simulations/{id}` — status + summary (daily energy balance, comfort stats, scores)
+- `POST /simulations` — `{projectId, shelterDesignId, climateProfileId, timeStepMinutes, periodType, startAt, endAt, runByUserId?}` → `202 Accepted` + simulation id (status QUEUED/RUNNING/COMPLETE)
+- `GET /simulations/{id}` — status + summary (daily energy balance, comfort stats, scores); `summary` is `null` until COMPLETE
 - `GET /simulations/{id}/series` — full time series (paged) for charting
-- `GET /simulations/{id}/explain?term=wall|roof|floor|opening|vent|mass|solar|score` — formula + substituted values for the Explain Calculation panel
+- `GET /simulations/{id}/explain?term=...` — **not implemented**; Explain Calculation is computed entirely client-side (it needs per-step fields, like raw solar irradiance, that the persisted series doesn't carry — see `app/js/adapter.js`'s `explainLocalRecompute`)
 
 ## Optimization
-- `POST /optimization-runs` — `{projectId, baseShelterDesignId, weights: {comfort, retention, solar, energy, cost}}` → runs candidate generation + scoring
-- `GET /optimization-runs/{id}` — candidates evaluated, top 5 (`design_candidate` rows), recommended
-- `GET /optimization-runs/{id}/sensitivity` — ranked parameter-impact list
+- `POST /optimization-runs` — `{projectId, baseShelterDesignId, climateProfileId, timeStepMinutes, periodType, weights?, broaderSearch?}` → `202 Accepted`; `broaderSearch` is accepted but always ignored (`ml/` is a stub, so `usedMlScreening` is always `false`)
+- `GET /optimization-runs/{id}` — `{status, candidatesEvaluated, usedMlScreening, top, recommended, all}`; each candidate carries a `designSummary` (material slugs, orientation, insulation, window area/%, thermal mass — computed in one batched query for the whole `all` list, not per candidate)
+- `GET /optimization-runs/{id}/sensitivity` — **not implemented** (always 501); the engine method (`OptimizationEngine.sensitivityAnalysis`) exists but isn't wired to a route — Sensitivity Analysis is computed entirely client-side instead
 
 ## What-If
-- `POST /what-if` — `{shelterDesignId, climateProfileId, perturbation}` → before/after simulation summaries (stateless, not persisted as its own entity — reuses `/simulations` under the hood)
+- `POST /what-if` — **not implemented**; What-If Analysis runs entirely client-side (instant before/after comparison, never persisted or recorded)
 
 ## Validation
-- `POST /validation-datasets` — `{projectId, shelterDesignId, points: [{ts, ambientTempC, measuredIndoorTempC, solarRadiationWm2, windSpeedMs, relativeHumidityPct}]}`
-- `GET /validation-datasets/{id}` — predicted-vs-measured points + MAE/RMSE/MAPE/R²
+- `POST /validation-datasets` / `GET /validation-datasets/{id}` — **not implemented**; validation datasets stay device-local (`localStorage`) only
 
 ## Reports
 - `POST /reports` — `{projectId, simulationId, optimizationRunId}` → generates PDF (server-side, e.g. OpenPDF/Flying Saucer), returns `fileUrl`
